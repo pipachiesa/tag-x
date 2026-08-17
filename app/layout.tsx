@@ -1,0 +1,4 @@
+import type { Metadata } from "next";
+import "./globals.css";
+export const metadata:Metadata={title:"Tag X — Football video intelligence",description:"A fast, focused workspace for professional football event collection and video analysis.",icons:{icon:"/favicon.svg",shortcut:"/favicon.svg"},openGraph:{title:"Tag X — Football video intelligence",description:"Professional match tagging and video analysis, without the clutter.",images:[{url:"/og.png",width:1200,height:630,alt:"Tag X match tagging workspace"}]},twitter:{card:"summary_large_image",title:"Tag X — Football video intelligence",description:"Professional match tagging and video analysis, without the clutter.",images:["/og.png"]}};
+export default function RootLayout({children}:Readonly<{children:React.ReactNode}>){return <html lang="en"><body>{children}</body></html>}
