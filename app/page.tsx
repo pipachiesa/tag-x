@@ -10,6 +10,7 @@ type EventRecord = { id:number; minute:string; team:TeamCode; player:string; act
 
 const COLS = 12;
 const ROW = 62;
+const playbackSpeeds = [0.25,0.5,1,1.5,2];
 const actions = ["Pass","Shot","Cross","Carry","Recovery","Tackle","Interception","Clearance","Aerial duel","Foul"];
 const outcomes = ["Successful","Unsuccessful","Goal","Blocked","Saved","Off target","Won","Lost"];
 const players = ["01 F. Armani","02 S. Boselli","03 R. Funes Mori","05 M. Kranevitter","08 N. Fernández","10 M. Lanzini","11 F. Colidio","19 C. Echeverri"];
@@ -48,6 +49,7 @@ function PanelWindow({id,title,meta,rect,locked,onPointerDown,children}:{id:Pane
 export default function Home(){
   const [view,setView] = useState<View>("tagging");
   const [playing,setPlaying] = useState(false);
+  const [playbackRate,setPlaybackRate] = useState(1);
   const [clock,setClock] = useState(2531);
   const [activeAction,setActiveAction] = useState("Pass");
   const [activeOutcome,setActiveOutcome] = useState("Successful");
@@ -73,13 +75,14 @@ export default function Home(){
   useEffect(()=>{const saved=window.localStorage.getItem("tagx-panel-layout");if(saved)window.setTimeout(()=>setPanels(JSON.parse(saved)),0)},[]);
   useEffect(()=>{window.localStorage.setItem("tagx-panel-layout",JSON.stringify(panels))},[panels]);
   useEffect(()=>{if(videoUrl)return; if(!playing)return; const timer=window.setInterval(()=>setClock(c=>c+1),1000);return()=>window.clearInterval(timer)},[playing,videoUrl]);
-  useEffect(()=>{const handler=(e:KeyboardEvent)=>{if(e.code==="Space"&&!(e.target instanceof HTMLInputElement)&&!(e.target instanceof HTMLSelectElement)){e.preventDefault();togglePlay()}const i=Number(e.key)-1;if(i>=0&&i<actions.length)setActiveAction(actions[i]);if(e.key==="Escape"){setConfigOpen(false);setRosterOpen(false);setImportOpen(false)}};window.addEventListener("keydown",handler);return()=>window.removeEventListener("keydown",handler)});
+  useEffect(()=>{const handler=(e:KeyboardEvent)=>{const target=e.target;if(target instanceof HTMLInputElement||target instanceof HTMLSelectElement||target instanceof HTMLTextAreaElement||(target instanceof HTMLElement&&target.isContentEditable))return;if(e.code==="Space"){e.preventDefault();togglePlay()}if(e.key==="ArrowLeft"){e.preventDefault();seek(-5)}if(e.key==="ArrowRight"){e.preventDefault();seek(5)}const i=Number(e.key)-1;if(i>=0&&i<actions.length)setActiveAction(actions[i]);if(e.key==="Escape"){setConfigOpen(false);setRosterOpen(false);setImportOpen(false)}};window.addEventListener("keydown",handler);return()=>window.removeEventListener("keydown",handler)});
   useEffect(()=>()=>{if(videoUrl)URL.revokeObjectURL(videoUrl)},[videoUrl]);
 
   const formattedClock = useMemo(()=>`${String(Math.floor(clock/60)).padStart(2,"0")}:${String(clock%60).padStart(2,"0")}`,[clock]);
   function notify(message:string){setToast(message);window.setTimeout(()=>setToast(""),2200)}
   function togglePlay(){if(videoRef.current){if(videoRef.current.paused)videoRef.current.play();else videoRef.current.pause();return}setPlaying(p=>!p)}
   function seek(seconds:number){if(videoRef.current){videoRef.current.currentTime=Math.max(0,videoRef.current.currentTime+seconds);return}setClock(c=>Math.max(0,c+seconds))}
+  function changeSpeed(rate:number){setPlaybackRate(rate);if(videoRef.current)videoRef.current.playbackRate=rate}
   function chooseVideo(file?:File){if(!file)return; if(videoUrl)URL.revokeObjectURL(videoUrl);setVideoUrl(URL.createObjectURL(file));setVideoName(file.name)}
   function startSession(){setImportOpen(false);setClock(0);setPlaying(false);notify("Match ready for tagging")}
   function recordEvent(x:number,y:number){setEvents(current=>[{id:current[0].id+1,minute:formattedClock,team:activeTeam,player:activePlayer,action:activeAction,outcome:activeOutcome,x,y},...current]);notify(`${activeAction} recorded · ${activePlayer}`)}
@@ -124,10 +127,10 @@ export default function Home(){
         {view==="tagging" ? <div className="workspace-board" ref={boardRef}>
           <PanelWindow id="video" title="MATCH VIDEO" meta={videoName||"No source imported"} rect={panels.video} locked={locked} onPointerDown={beginPanelInteraction}>
             <div className={`video-stage ${videoUrl?"has-video":""}`}>
-              {videoUrl?<video ref={videoRef} src={videoUrl} controls onTimeUpdate={e=>setClock(Math.floor(e.currentTarget.currentTime))}><track kind="captions" srcLang="en" label="English"/></video>:<button className="import-empty" onClick={()=>setImportOpen(true)}><span className="video-grid"><MiniPitch/></span><span className="upload-icon">⇧</span><h2>Import match video</h2><span className="import-copy">Add the fixture, teams and an MP4/WebM source.</span><span className="choose-button">CHOOSE MATCH</span></button>}
+              {videoUrl?<video ref={videoRef} src={videoUrl} controls onLoadedMetadata={e=>{e.currentTarget.playbackRate=playbackRate}} onPlay={()=>setPlaying(true)} onPause={()=>setPlaying(false)} onTimeUpdate={e=>setClock(Math.floor(e.currentTarget.currentTime))}><track kind="captions" srcLang="en" label="English"/></video>:<button className="import-empty" onClick={()=>setImportOpen(true)}><span className="video-grid"><MiniPitch/></span><span className="upload-icon">⇧</span><h2>Import match video</h2><span className="import-copy">Add the fixture, teams and an MP4/WebM source.</span><span className="choose-button">CHOOSE MATCH</span></button>}
               {videoUrl&&<div className="scorebug"><b>RIV</b><strong>2 — 1</strong><b>BOC</b><span>2ND HALF</span></div>}
             </div>
-            <div className="transport"><button onClick={()=>seek(-5)}>−5s</button><button className="play" onClick={togglePlay}>{playing?"Ⅱ PAUSE":"▶ PLAY"}</button><button onClick={()=>seek(5)}>+5s</button><div className="timeline"><span style={{width:`${Math.min(100,clock/5400*100)}%`}}/></div><b>{formattedClock}</b><button onClick={()=>setImportOpen(true)}>↥ SOURCE</button></div>
+            <div className="transport"><button className="play" onClick={togglePlay}>{playing?"Ⅱ PAUSE":"▶ PLAY"}</button><div className="speed-controls" aria-label="Playback speed">{playbackSpeeds.map(rate=><button key={rate} className={playbackRate===rate?"selected":""} aria-pressed={playbackRate===rate} title={`Play at ${rate}× speed`} onClick={()=>changeSpeed(rate)}>{rate}×</button>)}</div></div>
           </PanelWindow>
 
           <PanelWindow id="tagger" title="QUICK TAG" meta="Professional preset" rect={panels.tagger} locked={locked} onPointerDown={beginPanelInteraction}>

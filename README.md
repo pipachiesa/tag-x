@@ -5,7 +5,8 @@ Tag X is a focused football match-tagging and video-analysis workspace designed 
 ## MVP scope
 
 - Football Manager 26-inspired workspace using the Tag X blue palette
-- Match setup and MP4/WebM import flow with keyboard transport controls
+- Match setup and MP4/WebM import flow with compact playback controls
+- Playback speeds from 0.25× to 2×, Space for play/pause, and Left/Right arrows to seek 5 seconds
 - Movable and resizable tagging windows with grid snapping, lock, and reset
 - Professional default event types and outcomes
 - Click-to-tag pitch coordinates and recent event log
