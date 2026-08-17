@@ -9,6 +9,7 @@ type PanelRect = { x: number; y: number; w: number; h: number; z: number };
 type Point = { x:number; y:number };
 type MarkerShape = "circle" | "square" | "diamond" | "triangle";
 type EventRecord = { id:number; minute:string; team:TeamCode; player:string; action:string; outcome:string; x:number; y:number; endX?:number; endY?:number; goalX?:number; goalY?:number; color?:string; marker?:MarkerShape };
+type MatchSession = { id:string; matchName:string; competition:string; clock:number; events:EventRecord[] };
 
 const COLS = 12;
 const ROW = 62;
@@ -20,10 +21,14 @@ const markerColors = ["#5b8def","#10a37f","#f4c95d","#ef6c75","#c084fc","#f3f3f3
 const markerShapes:MarkerShape[] = ["circle","square","diamond","triangle"];
 const players = ["01 F. Armani","02 S. Boselli","03 R. Funes Mori","05 M. Kranevitter","08 N. Fernández","10 M. Lanzini","11 F. Colidio","19 C. Echeverri"];
 const seededEvents:EventRecord[] = [
-  {id:128,minute:"42:08",team:"RIV",player:"10 M. Lanzini",action:"Pass",outcome:"Successful",x:32,y:61,endX:55,endY:43},
-  {id:127,minute:"41:54",team:"RIV",player:"11 F. Colidio",action:"Shot",outcome:"Blocked",x:84,y:42,goalX:63,goalY:44},
-  {id:126,minute:"41:31",team:"BOC",player:"09 M. Merentiel",action:"Recovery",outcome:"Won",x:57,y:72},
-  {id:125,minute:"40:48",team:"RIV",player:"08 N. Fernández",action:"Cross",outcome:"Successful",x:92,y:18,endX:79,endY:48},
+  {id:128,minute:"42:08",team:"RIV",player:"10 M. Lanzini",action:"Pass",outcome:"Successful",x:32,y:61,endX:55,endY:43,color:"#5b8def",marker:"circle"},
+  {id:127,minute:"41:54",team:"RIV",player:"11 F. Colidio",action:"Shot",outcome:"Blocked",x:84,y:42,goalX:63,goalY:44,color:"#ef6c75",marker:"diamond"},
+  {id:126,minute:"41:31",team:"BOC",player:"09 M. Merentiel",action:"Recovery",outcome:"Won",x:57,y:72,color:"#f4c95d",marker:"square"},
+  {id:125,minute:"40:48",team:"RIV",player:"08 N. Fernández",action:"Cross",outcome:"Successful",x:92,y:18,endX:79,endY:48,color:"#10a37f",marker:"triangle"},
+];
+const seededSessions:MatchSession[] = [
+  {id:"river-boca",matchName:"River Plate vs Boca Juniors",competition:"Friendly · El Monumental",clock:2531,events:seededEvents},
+  {id:"racing-independiente",matchName:"Racing Club vs Independiente",competition:"Liga Profesional · El Cilindro",clock:0,events:[]},
 ];
 const defaultPanels:Record<PanelKey,PanelRect> = {
   video:{x:0,y:0,w:8,h:7,z:1},
@@ -62,16 +67,18 @@ export default function Home(){
   const [view,setView] = useState<View>("tagging");
   const [playing,setPlaying] = useState(false);
   const [playbackRate,setPlaybackRate] = useState(1);
-  const [clock,setClock] = useState(2531);
+  const [sessions,setSessions] = useState<MatchSession[]>(seededSessions);
+  const [activeSessionId,setActiveSessionId] = useState(seededSessions[0].id);
+  const [sessionsReady,setSessionsReady] = useState(false);
   const [activeAction,setActiveAction] = useState("Pass");
   const [activeOutcome,setActiveOutcome] = useState("Successful");
   const [activePlayer,setActivePlayer] = useState(players[5]);
   const [activeTeam,setActiveTeam] = useState<TeamCode>("RIV");
-  const [events,setEvents] = useState(seededEvents);
+  const [editingEventId,setEditingEventId] = useState<number|null>(null);
   const [routeDraft,setRouteDraft] = useState<{start:Point;current:Point}|null>(null);
   const [shotOrigin,setShotOrigin] = useState<Point|null>(null);
-  const [markerColor,setMarkerColor] = useState(markerColors[0]);
-  const [markerShape,setMarkerShape] = useState<MarkerShape>("circle");
+  const markerColor = markerColors[0];
+  const markerShape:MarkerShape = "circle";
   const [enabledPanels,setEnabledPanels] = useState(["phase","goal","clip"]);
   const [configOpen,setConfigOpen] = useState(false);
   const [rosterOpen,setRosterOpen] = useState(false);
@@ -82,27 +89,37 @@ export default function Home(){
   const [panels,setPanels] = useState(defaultPanels);
   const [videoUrl,setVideoUrl] = useState("");
   const [videoName,setVideoName] = useState("");
-  const [matchName,setMatchName] = useState("River Plate vs Boca Juniors");
-  const [competition,setCompetition] = useState("Friendly · El Monumental");
+  const [draftMatchName,setDraftMatchName] = useState("");
+  const [draftCompetition,setDraftCompetition] = useState("");
   const boardRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(()=>{const saved=window.localStorage.getItem("tagx-panel-layout");if(saved)window.setTimeout(()=>setPanels(JSON.parse(saved)),0)},[]);
-  useEffect(()=>{window.localStorage.setItem("tagx-panel-layout",JSON.stringify(panels))},[panels]);
-  useEffect(()=>{if(videoUrl)return; if(!playing)return; const timer=window.setInterval(()=>setClock(c=>c+1),1000);return()=>window.clearInterval(timer)},[playing,videoUrl]);
+  const activeSession = sessions.find(session=>session.id===activeSessionId) || sessions[0];
+  const {clock,events,matchName,competition} = activeSession;
+
+  useEffect(()=>{try{const saved=window.localStorage.getItem("tagx-panel-layout");if(saved){const parsed=JSON.parse(saved) as Record<PanelKey,PanelRect>;if(parsed.video&&parsed.tagger&&parsed.pitch&&parsed.events)window.setTimeout(()=>setPanels(parsed),0)}}catch{window.localStorage.removeItem("tagx-panel-layout")}},[]);
+  useEffect(()=>{try{window.localStorage.setItem("tagx-panel-layout",JSON.stringify(panels))}catch{/* Storage can be unavailable without breaking the workspace. */}},[panels]);
+  useEffect(()=>{window.setTimeout(()=>{try{const saved=window.localStorage.getItem("tagx-match-sessions");const selected=window.localStorage.getItem("tagx-active-session");if(saved){const parsed=JSON.parse(saved) as MatchSession[];if(Array.isArray(parsed)&&parsed.length){setSessions(parsed);setActiveSessionId(selected&&parsed.some(session=>session.id===selected)?selected:parsed[0].id)}}}catch{window.localStorage.removeItem("tagx-match-sessions");window.localStorage.removeItem("tagx-active-session")}finally{setSessionsReady(true)}},0)},[]);
+  useEffect(()=>{if(!sessionsReady)return;try{window.localStorage.setItem("tagx-match-sessions",JSON.stringify(sessions));window.localStorage.setItem("tagx-active-session",activeSessionId)}catch{/* Sessions continue in memory if storage is full. */}},[sessions,activeSessionId,sessionsReady]);
+  useEffect(()=>{if(videoUrl||!playing)return;const timer=window.setInterval(()=>setSessions(current=>current.map(session=>session.id===activeSessionId?{...session,clock:session.clock+1}:session)),1000);return()=>window.clearInterval(timer)},[playing,videoUrl,activeSessionId]);
   useEffect(()=>{const handler=(e:KeyboardEvent)=>{const target=e.target;if(target instanceof HTMLInputElement||target instanceof HTMLSelectElement||target instanceof HTMLTextAreaElement||(target instanceof HTMLElement&&target.isContentEditable))return;if(e.code==="Space"){e.preventDefault();togglePlay()}if(e.key==="ArrowLeft"){e.preventDefault();seek(-5)}if(e.key==="ArrowRight"){e.preventDefault();seek(5)}const i=Number(e.key)-1;if(i>=0&&i<actions.length)chooseAction(actions[i]);if(e.key==="Escape"){setConfigOpen(false);setRosterOpen(false);setImportOpen(false);setRouteDraft(null);setShotOrigin(null)}};window.addEventListener("keydown",handler);return()=>window.removeEventListener("keydown",handler)});
   useEffect(()=>()=>{if(videoUrl)URL.revokeObjectURL(videoUrl)},[videoUrl]);
 
   const formattedClock = useMemo(()=>`${String(Math.floor(clock/60)).padStart(2,"0")}:${String(clock%60).padStart(2,"0")}`,[clock]);
+  function setClock(update:number|((value:number)=>number)){setSessions(current=>current.map(session=>session.id===activeSessionId?{...session,clock:typeof update==="function"?update(session.clock):update}:session))}
+  function setEvents(update:EventRecord[]|((value:EventRecord[])=>EventRecord[])){setSessions(current=>current.map(session=>session.id===activeSessionId?{...session,events:typeof update==="function"?update(session.events):update}:session))}
   function notify(message:string){setToast(message);window.setTimeout(()=>setToast(""),2200)}
   function togglePlay(){if(videoRef.current){if(videoRef.current.paused)videoRef.current.play();else videoRef.current.pause();return}setPlaying(p=>!p)}
   function seek(seconds:number){if(videoRef.current){videoRef.current.currentTime=Math.max(0,videoRef.current.currentTime+seconds);return}setClock(c=>Math.max(0,c+seconds))}
   function changeSpeed(rate:number){setPlaybackRate(rate);if(videoRef.current)videoRef.current.playbackRate=rate}
   function chooseAction(action:string){setActiveAction(action);setRouteDraft(null);setShotOrigin(null)}
   function chooseVideo(file?:File){if(!file)return; if(videoUrl)URL.revokeObjectURL(videoUrl);setVideoUrl(URL.createObjectURL(file));setVideoName(file.name)}
-  function startSession(){setImportOpen(false);setClock(0);setPlaying(false);notify("Match ready for tagging")}
-  function recordEvent(x:number,y:number,end?:Point,goal?:Point,outcome=activeOutcome){setEvents(current=>[{id:current[0].id+1,minute:formattedClock,team:activeTeam,player:activePlayer,action:activeAction,outcome,x,y,endX:end?.x,endY:end?.y,goalX:goal?.x,goalY:goal?.y,color:markerColor,marker:markerShape},...current]);notify(`${activeAction} recorded · ${outcome}${end?` · ${routeDistance({id:0,minute:"",team:activeTeam,player:"",action:activeAction,outcome,x,y,endX:end.x,endY:end.y})} m`:""}`)}
+  function openImportModal(){setDraftMatchName("");setDraftCompetition("");setImportOpen(true)}
+  function startSession(){const id=`match-${Date.now()}`;const session:MatchSession={id,matchName:draftMatchName.trim()||"Untitled match",competition:draftCompetition.trim()||"Match session",clock:0,events:[]};setSessions(current=>[session,...current]);setActiveSessionId(id);setImportOpen(false);setPlaying(false);setEditingEventId(null);notify("New match session ready")}
+  function switchSession(id:string){setActiveSessionId(id);setPlaying(false);setEditingEventId(null);setRouteDraft(null);setShotOrigin(null);notify("Match session changed")}
+  function recordEvent(x:number,y:number,end?:Point,goal?:Point,outcome=activeOutcome){setEvents(current=>[{id:Math.max(0,...current.map(event=>event.id))+1,minute:formattedClock,team:activeTeam,player:activePlayer,action:activeAction,outcome,x,y,endX:end?.x,endY:end?.y,goalX:goal?.x,goalY:goal?.y,color:markerColor,marker:markerShape},...current]);notify(`${activeAction} recorded · ${outcome}${end?` · ${routeDistance({id:0,minute:"",team:activeTeam,player:"",action:activeAction,outcome,x,y,endX:end.x,endY:end.y})} m`:""}`)}
+  function updateEventStyle(id:number,patch:Pick<EventRecord,"color"|"marker">){setEvents(current=>current.map(event=>event.id===id?{...event,...patch}:event))}
   function captureLocation(point:Point){
     if(activeAction==="Shot"){setShotOrigin(point);notify("Shot origin set · now choose the target on goal");return}
     recordEvent(point.x,point.y);
@@ -150,23 +167,23 @@ export default function Home(){
     <header className="global-bar">
       <div className="history-buttons"><button aria-label="Back">‹</button><button aria-label="Forward">›</button></div>
       <div className="brand"><Mark/><div><b>TAG X</b><small>VIDEO INTELLIGENCE</small></div></div>
-      <nav className="global-nav"><button className="active">Workspace</button><button>Match</button><button>Teams</button></nav>
-      <div className="global-actions"><button aria-label="Search">⌕</button><button aria-label="Settings" onClick={()=>setConfigOpen(true)}>⚙</button><div className="date-box"><small>17/8/2026</small><b>{formattedClock}</b></div><button className="continue" onClick={()=>notify("Session saved")}>SAVE SESSION <span>»</span></button></div>
+      <div className="workspace-title"><b>{matchName}</b><small>{sessions.length} match sessions</small></div>
+      <div className="global-actions"><div className="date-box"><small>17/8/2026</small><b>{formattedClock}</b></div><button className="continue" onClick={()=>notify("Session saved")}>SAVE</button></div>
     </header>
 
     <div className="product-shell">
       <aside className="module-rail">
-        <div className="match-card"><span>ACTIVE MATCH</span><b>{matchName}</b><small>{competition}</small><strong><i>RIV</i> 2 — 1 <i>BOC</i></strong></div>
+        <div className="match-card"><span>MATCH SESSIONS</span><select aria-label="Active match session" value={activeSessionId} onChange={e=>switchSession(e.target.value)}>{sessions.map(session=><option key={session.id} value={session.id}>{session.matchName}</option>)}</select><small>{competition}</small><strong>{events.length} <i>EVENTS</i></strong><button className="new-session" onClick={openImportModal}>＋ New match</button></div>
         <nav><button className={view==="tagging"?"active":""} onClick={()=>setView("tagging")}><span>⌾</span><b>Match Tagging</b><small>Collect events</small></button><button className={view==="illustrator"?"active":""} onClick={()=>setView("illustrator")}><span>✎</span><b>Illustrator</b><small>Build sequences</small></button></nav>
         <div className="rail-bottom"><button onClick={()=>setRosterOpen(true)}>♙ <span>Team library</span></button><button onClick={()=>setConfigOpen(true)}>⚙ <span>Controls</span></button><div className="analyst"><i>FC</i><span><b>Felipe Chiesa</b><small>Lead analyst</small></span></div></div>
       </aside>
 
       <section className="main-area">
-        <div className="section-tabs"><div><button className="active">Overview</button><button>Event setup</button><button>Session history</button></div><div className="layout-actions"><span>LAYOUT</span><button onClick={()=>setLocked(l=>!l)}>{locked?"UNLOCK":"LOCK"}</button><button onClick={resetLayout}>RESET</button><button className="import-match" onClick={()=>setImportOpen(true)}>＋ IMPORT MATCH</button></div></div>
+        <div className="section-tabs"><div className="session-heading"><b>{matchName}</b><small>{competition}</small></div><div className="layout-actions"><button onClick={()=>setConfigOpen(true)}>LAYOUT & CONTROLS</button><button className="import-match" onClick={openImportModal}>＋ NEW MATCH</button></div></div>
         {view==="tagging" ? <div className="workspace-board" ref={boardRef}>
           <PanelWindow id="video" title="MATCH VIDEO" meta={videoName||"No source imported"} rect={panels.video} locked={locked} onPointerDown={beginPanelInteraction}>
             <div className={`video-stage ${videoUrl?"has-video":""}`}>
-              {videoUrl?<video ref={videoRef} src={videoUrl} controls onLoadedMetadata={e=>{e.currentTarget.playbackRate=playbackRate}} onPlay={()=>setPlaying(true)} onPause={()=>setPlaying(false)} onTimeUpdate={e=>setClock(Math.floor(e.currentTarget.currentTime))}><track kind="captions" srcLang="en" label="English"/></video>:<button className="import-empty" onClick={()=>setImportOpen(true)}><span className="video-grid"><MiniPitch/></span><span className="upload-icon">⇧</span><h2>Import match video</h2><span className="import-copy">Add the fixture, teams and an MP4/WebM source.</span><span className="choose-button">CHOOSE MATCH</span></button>}
+              {videoUrl?<video ref={videoRef} src={videoUrl} controls onLoadedMetadata={e=>{e.currentTarget.playbackRate=playbackRate}} onPlay={()=>setPlaying(true)} onPause={()=>setPlaying(false)} onTimeUpdate={e=>setClock(Math.floor(e.currentTarget.currentTime))}><track kind="captions" srcLang="en" label="English"/></video>:<button className="import-empty" onClick={openImportModal}><span className="video-grid"><MiniPitch/></span><span className="upload-icon">⇧</span><h2>Import match video</h2><span className="import-copy">Add the fixture, teams and an MP4/WebM source.</span><span className="choose-button">CHOOSE MATCH</span></button>}
               {videoUrl&&<div className="scorebug"><b>RIV</b><strong>2 — 1</strong><b>BOC</b><span>2ND HALF</span></div>}
             </div>
             <div className="transport"><button className="play" onClick={togglePlay}>{playing?"Ⅱ PAUSE":"▶ PLAY"}</button><div className="speed-controls" aria-label="Playback speed">{playbackSpeeds.map(rate=><button key={rate} className={playbackRate===rate?"selected":""} aria-pressed={playbackRate===rate} title={`Play at ${rate}× speed`} onClick={()=>changeSpeed(rate)}>{rate}×</button>)}</div></div>
@@ -176,9 +193,8 @@ export default function Home(){
             <div className="tagger-scroll">
               <div className="step"><span>01</span><b>TEAM IN POSSESSION</b></div><div className="team-switch"><button className={activeTeam==="RIV"?"selected":""} onClick={()=>setActiveTeam("RIV")}>□ RIVER PLATE</button><button className={activeTeam==="BOC"?"selected":""} onClick={()=>setActiveTeam("BOC")}>■ BOCA JUNIORS</button></div>
               <div className="step"><span>02</span><b>PLAYER</b><button onClick={()=>setRosterOpen(true)}>EDIT SQUAD</button></div><select value={activePlayer} onChange={e=>setActivePlayer(e.target.value)}>{players.map(p=><option key={p}>{p}</option>)}</select>
-              <div className="step"><span>03</span><b>ACTION</b><button onClick={()=>notify("New action ready")}>＋ ADD</button></div><div className="action-grid">{actions.map((a,i)=><button key={a} className={activeAction===a?"selected":""} onClick={()=>chooseAction(a)}><span>{a}</span><kbd>{i+1}</kbd></button>)}</div>
-              <div className="step"><span>04</span><b>OUTCOME</b><button onClick={()=>notify("New outcome ready")}>＋ ADD</button></div><div className="outcomes">{outcomes.map(o=><button key={o} className={activeOutcome===o?"selected":""} onClick={()=>setActiveOutcome(o)}><i/>{o}</button>)}</div>
-              <div className="marker-control"><div className="marker-heading"><b>MARK STYLE</b><small>COLOR & SHAPE</small></div><div className="marker-options"><div className="color-options">{markerColors.map(color=><button key={color} aria-label={`Use ${color}`} aria-pressed={markerColor===color} className={markerColor===color?"selected":""} style={{backgroundColor:color}} onClick={()=>setMarkerColor(color)}/>)}</div><div className="shape-options">{markerShapes.map(shape=><button key={shape} aria-label={`Use ${shape}`} aria-pressed={markerShape===shape} className={markerShape===shape?"selected":""} onClick={()=>setMarkerShape(shape)}><i className={`marker-sample ${shape}`}/></button>)}</div></div></div>
+              <div className="step"><span>03</span><b>ACTION</b></div><div className="action-grid">{actions.map((a,i)=><button key={a} className={activeAction===a?"selected":""} onClick={()=>chooseAction(a)}><span>{a}</span><kbd>{i+1}</kbd></button>)}</div>
+              <div className="step"><span>04</span><b>OUTCOME</b></div><div className="outcomes">{outcomes.map(o=><button key={o} className={activeOutcome===o?"selected":""} onClick={()=>setActiveOutcome(o)}><i/>{o}</button>)}</div>
               {enabledPanels.includes("goal")&&<div className={`goal-control ${activeAction==="Shot"?"active":""}`}><div className="goal-heading"><b>SHOT PLACEMENT · SHOTS / SAVES</b><small>{activeAction!=="Shot"?"SELECT SHOT":shotOrigin?"CHOOSE PLACEMENT":"MARK SHOT ORIGIN"}</small></div><div className="goal-target" role="button" tabIndex={0} aria-label="Choose shot or save location on goal" onClick={addGoalTarget} onKeyDown={e=>{if((e.key==="Enter"||e.key===" ")&&shotOrigin){e.preventDefault();recordEvent(shotOrigin.x,shotOrigin.y,undefined,{x:50,y:50});setShotOrigin(null)}}}><div className="goal-depth"/><div className="goal-mouth"><i/><i/><i/><span/><span/></div><div className="goal-ground"/>{events.filter(event=>event.goalX!==undefined&&event.goalY!==undefined).slice(0,12).map(event=><i key={event.id} className={`goal-point ${event.outcome.toLowerCase().replace(" ","-")}`} style={{left:`${event.goalX}%`,top:`${event.goalY}%`,backgroundColor:event.color}} title={`${event.action} · ${event.outcome}`}/>)}</div><p>Inside the posts = on target · outside = off target</p></div>}
               {enabledPanels.includes("phase")&&<div className="optional-control"><div><b>PHASE ANALYSIS</b><small>OPTIONAL POP-UP CONTROL</small></div><select defaultValue="Build-up"><option>Build-up</option><option>High press</option><option>Counter attack</option><option>Low block</option><option>Transition</option></select></div>}
               <button className="next" onClick={()=>notify("Choose a location on the pitch")}>NEXT: CHOOSE LOCATION <span>→</span></button>
@@ -190,7 +206,7 @@ export default function Home(){
           </PanelWindow>
 
           <PanelWindow id="events" title="LIVE EVENT LOG" meta={`${events.length} records`} rect={panels.events} locked={locked} onPointerDown={beginPanelInteraction}>
-            <div className="event-list">{events.slice(0,8).map(e=><button key={e.id} onClick={()=>setClock(Number(e.minute.split(":")[0])*60+Number(e.minute.split(":")[1]))}><time>{e.minute}</time><i>{e.action[0]}</i><span><b>{e.action}</b><small>{e.player} · {e.outcome}{routeDistance(e)!==null?` · ${routeDistance(e)} m`:""}</small></span><strong>›</strong></button>)}</div>
+            <div className="event-list">{events.slice(0,8).map(event=><div className={`event-entry ${editingEventId===event.id?"editing":""}`} key={event.id}><button onClick={()=>{setClock(Number(event.minute.split(":")[0])*60+Number(event.minute.split(":")[1]));setEditingEventId(current=>current===event.id?null:event.id)}}><time>{event.minute}</time><i style={{backgroundColor:event.color}}>{event.action[0]}</i><span><b>{event.action}</b><small>{event.player} · {event.outcome}{routeDistance(event)!==null?` · ${routeDistance(event)} m`:""}</small></span><strong>{editingEventId===event.id?"×":"›"}</strong></button>{editingEventId===event.id&&<div className="event-style-editor"><small>MAP MARKER</small><div className="color-options">{markerColors.map(color=><button key={color} aria-label={`Change event color to ${color}`} className={event.color===color?"selected":""} style={{backgroundColor:color}} onClick={()=>updateEventStyle(event.id,{color,marker:event.marker||"circle"})}/>)}</div><div className="shape-options">{markerShapes.map(shape=><button key={shape} aria-label={`Change event shape to ${shape}`} className={event.marker===shape?"selected":""} onClick={()=>updateEventStyle(event.id,{color:event.color||markerColors[0],marker:shape})}><i className={`marker-sample ${shape}`}/></button>)}</div></div>}</div>)}</div>
           </PanelWindow>
         </div> : <div className="illustrator-layout">
           <section className="fm-panel canvas-panel"><header><div><span>TACTICAL CANVAS</span><h1>Counter-press after loss</h1></div><button className="fm-primary" onClick={()=>notify("Render queued")}>EXPORT TACTICAL VIDEO »</button></header><div className="illustrator-canvas"><div className="video-grid"><MiniPitch/></div><div className="draw-ring one"/><div className="draw-ring two"/><div className="draw-zone"/><div className="draw-arrow a1">➜</div><div className="draw-arrow a2">➜</div></div><footer><button>▶ PLAY SEQUENCE</button><div><span/></div><b>00:08.0</b></footer></section>
@@ -200,8 +216,8 @@ export default function Home(){
     </div>
 
     {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions */}
-    {importOpen&&<dialog open className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setImportOpen(false)}}><section className="modal import-modal"><header><div><span>NEW MATCH SESSION</span><h2>Import a match</h2><p>Set the fixture once, import a saved squad and attach the match video.</p></div><button onClick={()=>setImportOpen(false)}>×</button></header><div className="import-form"><label>Match name<input value={matchName} onChange={e=>setMatchName(e.target.value)}/></label><div><label>Competition<input value={competition} onChange={e=>setCompetition(e.target.value)}/></label><label>Match date<input type="date" defaultValue="2026-08-17"/></label></div><div><label>Home team<select defaultValue="River Plate"><option>River Plate</option><option>Import saved team…</option></select></label><label>Away team<select defaultValue="Boca Juniors"><option>Boca Juniors</option><option>Import saved team…</option></select></label></div><button className="file-drop" onClick={()=>fileRef.current?.click()}><span>⇧</span><b>{videoName||"Choose MP4 or WebM"}</b><small>{videoName?"Video attached":"The file remains on this device"}</small></button><input ref={fileRef} hidden type="file" accept="video/*" onChange={e=>chooseVideo(e.target.files?.[0])}/></div><footer><button onClick={()=>setImportOpen(false)}>CANCEL</button><button className="fm-primary" onClick={startSession}>CREATE & IMPORT MATCH »</button></footer></section></dialog>}
-    {configOpen&&<dialog open className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setConfigOpen(false)}}><section className="modal"><header><div><span>WORKSPACE CONTROLS</span><h2>Optional tagging pop-ups</h2><p>Phase analysis and secondary controls stay inside Match Tagging.</p></div><button onClick={()=>setConfigOpen(false)}>×</button></header><div className="option-list">{panelOptions.map(p=><button key={p.id} onClick={()=>togglePanel(p.id)}><span className={enabledPanels.includes(p.id)?"toggle on":"toggle"}><i/></span><span><b>{p.label}</b><small>{p.detail}</small></span></button>)}</div><footer><button onClick={()=>setEnabledPanels([])}>HIDE ALL</button><button className="fm-primary" onClick={()=>setConfigOpen(false)}>APPLY CONTROLS »</button></footer></section></dialog>}
+    {importOpen&&<dialog open className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setImportOpen(false)}}><section className="modal import-modal"><header><div><span>NEW MATCH SESSION</span><h2>Import a match</h2><p>Every match is saved as a separate session.</p></div><button onClick={()=>setImportOpen(false)}>×</button></header><div className="import-form"><label>Match name<input value={draftMatchName} placeholder="River Plate vs Boca Juniors" onChange={e=>setDraftMatchName(e.target.value)}/></label><label>Competition<input value={draftCompetition} placeholder="Liga Profesional · El Monumental" onChange={e=>setDraftCompetition(e.target.value)}/></label><button className="file-drop" onClick={()=>fileRef.current?.click()}><span>⇧</span><b>{videoName||"Choose MP4 or WebM"}</b><small>{videoName?"Video attached":"The file remains on this device"}</small></button><input ref={fileRef} hidden type="file" accept="video/*" onChange={e=>chooseVideo(e.target.files?.[0])}/></div><footer><button onClick={()=>setImportOpen(false)}>CANCEL</button><button className="fm-primary" onClick={startSession}>CREATE SESSION »</button></footer></section></dialog>}
+    {configOpen&&<dialog open className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setConfigOpen(false)}}><section className="modal"><header><div><span>WORKSPACE CONTROLS</span><h2>Layout and optional panels</h2><p>Keep only the controls you need while tagging.</p></div><button onClick={()=>setConfigOpen(false)}>×</button></header><div className="compact-layout-controls"><button onClick={()=>setLocked(value=>!value)}>{locked?"Unlock windows":"Lock windows"}</button><button onClick={resetLayout}>Reset layout</button></div><div className="option-list">{panelOptions.map(p=><button key={p.id} onClick={()=>togglePanel(p.id)}><span className={enabledPanels.includes(p.id)?"toggle on":"toggle"}><i/></span><span><b>{p.label}</b><small>{p.detail}</small></span></button>)}</div><footer><button onClick={()=>setEnabledPanels([])}>HIDE ALL</button><button className="fm-primary" onClick={()=>setConfigOpen(false)}>DONE</button></footer></section></dialog>}
     {rosterOpen&&<dialog open className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setRosterOpen(false)}}><section className="modal roster-modal"><header><div><span>TEAM LIBRARY</span><h2>River Plate · First team</h2><p>Save this roster once and import it into future matches.</p></div><button onClick={()=>setRosterOpen(false)}>×</button></header><div className="roster-actions"><button className="fm-primary" onClick={()=>notify("Team saved to library")}>SAVE TEAM</button><button>IMPORT SAVED TEAM</button><button>＋ PLAYER</button></div><div className="roster-table">{players.map((p,i)=><div key={p}><span>{String(i+1).padStart(2,"0")}</span><b>{p.slice(3)}</b><small>{i<3?"DEF":i<5?"MID":"ATT"}</small><button>•••</button></div>)}</div></section></dialog>}
     {toast&&<div className="toast"><i/>{toast}</div>}
   </main>
