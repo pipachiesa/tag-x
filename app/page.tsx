@@ -6,19 +6,21 @@ type TeamCode = "RIV" | "BOC";
 type View = "tagging" | "illustrator";
 type PanelKey = "video" | "tagger" | "pitch" | "events";
 type PanelRect = { x: number; y: number; w: number; h: number; z: number };
-type EventRecord = { id:number; minute:string; team:TeamCode; player:string; action:string; outcome:string; x:number; y:number };
+type Point = { x:number; y:number };
+type EventRecord = { id:number; minute:string; team:TeamCode; player:string; action:string; outcome:string; x:number; y:number; endX?:number; endY?:number };
 
 const COLS = 12;
 const ROW = 62;
 const playbackSpeeds = [0.25,0.5,1,1.5,2];
 const actions = ["Pass","Shot","Cross","Carry","Recovery","Tackle","Interception","Clearance","Aerial duel","Foul"];
+const routedActions = new Set(["Pass","Cross","Carry","Clearance"]);
 const outcomes = ["Successful","Unsuccessful","Goal","Blocked","Saved","Off target","Won","Lost"];
 const players = ["01 F. Armani","02 S. Boselli","03 R. Funes Mori","05 M. Kranevitter","08 N. Fernández","10 M. Lanzini","11 F. Colidio","19 C. Echeverri"];
 const seededEvents:EventRecord[] = [
-  {id:128,minute:"42:08",team:"RIV",player:"10 M. Lanzini",action:"Pass",outcome:"Successful",x:32,y:61},
+  {id:128,minute:"42:08",team:"RIV",player:"10 M. Lanzini",action:"Pass",outcome:"Successful",x:32,y:61,endX:55,endY:43},
   {id:127,minute:"41:54",team:"RIV",player:"11 F. Colidio",action:"Shot",outcome:"Blocked",x:84,y:42},
   {id:126,minute:"41:31",team:"BOC",player:"09 M. Merentiel",action:"Recovery",outcome:"Won",x:57,y:72},
-  {id:125,minute:"40:48",team:"RIV",player:"08 N. Fernández",action:"Cross",outcome:"Successful",x:92,y:18},
+  {id:125,minute:"40:48",team:"RIV",player:"08 N. Fernández",action:"Cross",outcome:"Successful",x:92,y:18,endX:79,endY:48},
 ];
 const defaultPanels:Record<PanelKey,PanelRect> = {
   video:{x:0,y:0,w:8,h:7,z:1},
@@ -35,6 +37,12 @@ const panelOptions = [
 
 function Mark(){return <div className="tx-mark"><b>T</b><span>X</span></div>}
 function MiniPitch(){return <div className="mini-pitch"><i className="halfway"/><i className="circle"/><i className="box left"/><i className="box right"/></div>}
+function routeDistance(event:EventRecord){if(event.endX===undefined||event.endY===undefined)return null;return Math.round(Math.hypot((event.endX-event.x)*1.05,(event.endY-event.y)*.68))}
+function RouteArrow({event}:{event:EventRecord}){
+  if(event.endX===undefined||event.endY===undefined)return null;
+  const distance=routeDistance(event);
+  return <><svg className={`route-arrow ${event.team.toLowerCase()}`} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><defs><marker id={`head-${event.id}`} markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L5,2.5 L0,5 Z"/></marker></defs><line x1={event.x} y1={event.y} x2={event.endX} y2={event.endY} markerEnd={`url(#head-${event.id})`}/><circle cx={event.x} cy={event.y} r="1.35"/></svg><b className={`route-distance ${event.team.toLowerCase()}`} style={{left:`${(event.x+event.endX)/2}%`,top:`${(event.y+event.endY)/2}%`}}>{distance} m</b></>
+}
 
 function PanelWindow({id,title,meta,rect,locked,onPointerDown,children}:{id:PanelKey;title:string;meta:string;rect:PanelRect;locked:boolean;onPointerDown:(e:React.PointerEvent,id:PanelKey,mode:"move"|"resize")=>void;children:React.ReactNode}){
   return <section className={`desk-panel desk-${id}`} style={{left:`calc(${rect.x / COLS * 100}% + 4px)`,top:rect.y*ROW+4,width:`calc(${rect.w / COLS * 100}% - 8px)`,height:rect.h*ROW-8,zIndex:rect.z}} onPointerDown={e=>e.currentTarget.parentElement&&void 0}>
@@ -56,6 +64,7 @@ export default function Home(){
   const [activePlayer,setActivePlayer] = useState(players[5]);
   const [activeTeam,setActiveTeam] = useState<TeamCode>("RIV");
   const [events,setEvents] = useState(seededEvents);
+  const [routeOrigin,setRouteOrigin] = useState<Point|null>(null);
   const [enabledPanels,setEnabledPanels] = useState(["phase","goal","clip"]);
   const [configOpen,setConfigOpen] = useState(false);
   const [rosterOpen,setRosterOpen] = useState(false);
@@ -75,7 +84,7 @@ export default function Home(){
   useEffect(()=>{const saved=window.localStorage.getItem("tagx-panel-layout");if(saved)window.setTimeout(()=>setPanels(JSON.parse(saved)),0)},[]);
   useEffect(()=>{window.localStorage.setItem("tagx-panel-layout",JSON.stringify(panels))},[panels]);
   useEffect(()=>{if(videoUrl)return; if(!playing)return; const timer=window.setInterval(()=>setClock(c=>c+1),1000);return()=>window.clearInterval(timer)},[playing,videoUrl]);
-  useEffect(()=>{const handler=(e:KeyboardEvent)=>{const target=e.target;if(target instanceof HTMLInputElement||target instanceof HTMLSelectElement||target instanceof HTMLTextAreaElement||(target instanceof HTMLElement&&target.isContentEditable))return;if(e.code==="Space"){e.preventDefault();togglePlay()}if(e.key==="ArrowLeft"){e.preventDefault();seek(-5)}if(e.key==="ArrowRight"){e.preventDefault();seek(5)}const i=Number(e.key)-1;if(i>=0&&i<actions.length)setActiveAction(actions[i]);if(e.key==="Escape"){setConfigOpen(false);setRosterOpen(false);setImportOpen(false)}};window.addEventListener("keydown",handler);return()=>window.removeEventListener("keydown",handler)});
+  useEffect(()=>{const handler=(e:KeyboardEvent)=>{const target=e.target;if(target instanceof HTMLInputElement||target instanceof HTMLSelectElement||target instanceof HTMLTextAreaElement||(target instanceof HTMLElement&&target.isContentEditable))return;if(e.code==="Space"){e.preventDefault();togglePlay()}if(e.key==="ArrowLeft"){e.preventDefault();seek(-5)}if(e.key==="ArrowRight"){e.preventDefault();seek(5)}const i=Number(e.key)-1;if(i>=0&&i<actions.length)chooseAction(actions[i]);if(e.key==="Escape"){setConfigOpen(false);setRosterOpen(false);setImportOpen(false);setRouteOrigin(null)}};window.addEventListener("keydown",handler);return()=>window.removeEventListener("keydown",handler)});
   useEffect(()=>()=>{if(videoUrl)URL.revokeObjectURL(videoUrl)},[videoUrl]);
 
   const formattedClock = useMemo(()=>`${String(Math.floor(clock/60)).padStart(2,"0")}:${String(clock%60).padStart(2,"0")}`,[clock]);
@@ -83,10 +92,16 @@ export default function Home(){
   function togglePlay(){if(videoRef.current){if(videoRef.current.paused)videoRef.current.play();else videoRef.current.pause();return}setPlaying(p=>!p)}
   function seek(seconds:number){if(videoRef.current){videoRef.current.currentTime=Math.max(0,videoRef.current.currentTime+seconds);return}setClock(c=>Math.max(0,c+seconds))}
   function changeSpeed(rate:number){setPlaybackRate(rate);if(videoRef.current)videoRef.current.playbackRate=rate}
+  function chooseAction(action:string){setActiveAction(action);setRouteOrigin(null)}
   function chooseVideo(file?:File){if(!file)return; if(videoUrl)URL.revokeObjectURL(videoUrl);setVideoUrl(URL.createObjectURL(file));setVideoName(file.name)}
   function startSession(){setImportOpen(false);setClock(0);setPlaying(false);notify("Match ready for tagging")}
-  function recordEvent(x:number,y:number){setEvents(current=>[{id:current[0].id+1,minute:formattedClock,team:activeTeam,player:activePlayer,action:activeAction,outcome:activeOutcome,x,y},...current]);notify(`${activeAction} recorded · ${activePlayer}`)}
-  function addEvent(e:React.MouseEvent<HTMLDivElement>){const r=e.currentTarget.getBoundingClientRect();recordEvent(Math.round((e.clientX-r.left)/r.width*100),Math.round((e.clientY-r.top)/r.height*100))}
+  function recordEvent(x:number,y:number,end?:Point){setEvents(current=>[{id:current[0].id+1,minute:formattedClock,team:activeTeam,player:activePlayer,action:activeAction,outcome:activeOutcome,x,y,endX:end?.x,endY:end?.y},...current]);notify(`${activeAction} recorded · ${activePlayer}${end?` · ${routeDistance({id:0,minute:"",team:activeTeam,player:"",action:activeAction,outcome:"",x,y,endX:end.x,endY:end.y})} m`:""}`)}
+  function captureLocation(point:Point){
+    if(!routedActions.has(activeAction)){recordEvent(point.x,point.y);return}
+    if(!routeOrigin){setRouteOrigin(point);notify("Origin set · now click the destination");return}
+    recordEvent(routeOrigin.x,routeOrigin.y,point);setRouteOrigin(null);
+  }
+  function addEvent(e:React.MouseEvent<HTMLDivElement>){const r=e.currentTarget.getBoundingClientRect();captureLocation({x:Math.round((e.clientX-r.left)/r.width*100),y:Math.round((e.clientY-r.top)/r.height*100)})}
   function togglePanel(id:string){setEnabledPanels(current=>current.includes(id)?current.filter(item=>item!==id):[...current,id])}
   function resetLayout(){setPanels(defaultPanels);notify("Workspace layout restored")}
   function beginPanelInteraction(e:React.PointerEvent,id:PanelKey,mode:"move"|"resize"){
@@ -137,19 +152,19 @@ export default function Home(){
             <div className="tagger-scroll">
               <div className="step"><span>01</span><b>TEAM IN POSSESSION</b></div><div className="team-switch"><button className={activeTeam==="RIV"?"selected":""} onClick={()=>setActiveTeam("RIV")}>□ RIVER PLATE</button><button className={activeTeam==="BOC"?"selected":""} onClick={()=>setActiveTeam("BOC")}>■ BOCA JUNIORS</button></div>
               <div className="step"><span>02</span><b>PLAYER</b><button onClick={()=>setRosterOpen(true)}>EDIT SQUAD</button></div><select value={activePlayer} onChange={e=>setActivePlayer(e.target.value)}>{players.map(p=><option key={p}>{p}</option>)}</select>
-              <div className="step"><span>03</span><b>ACTION</b><button onClick={()=>notify("New action ready")}>＋ ADD</button></div><div className="action-grid">{actions.map((a,i)=><button key={a} className={activeAction===a?"selected":""} onClick={()=>setActiveAction(a)}><span>{a}</span><kbd>{i+1}</kbd></button>)}</div>
+              <div className="step"><span>03</span><b>ACTION</b><button onClick={()=>notify("New action ready")}>＋ ADD</button></div><div className="action-grid">{actions.map((a,i)=><button key={a} className={activeAction===a?"selected":""} onClick={()=>chooseAction(a)}><span>{a}</span><kbd>{i+1}</kbd></button>)}</div>
               <div className="step"><span>04</span><b>OUTCOME</b><button onClick={()=>notify("New outcome ready")}>＋ ADD</button></div><div className="outcomes">{outcomes.map(o=><button key={o} className={activeOutcome===o?"selected":""} onClick={()=>setActiveOutcome(o)}><i/>{o}</button>)}</div>
               {enabledPanels.includes("phase")&&<div className="optional-control"><div><b>PHASE ANALYSIS</b><small>OPTIONAL POP-UP CONTROL</small></div><select defaultValue="Build-up"><option>Build-up</option><option>High press</option><option>Counter attack</option><option>Low block</option><option>Transition</option></select></div>}
               <button className="next" onClick={()=>notify("Choose a location on the pitch")}>NEXT: CHOOSE LOCATION <span>→</span></button>
             </div>
           </PanelWindow>
 
-          <PanelWindow id="pitch" title="EVENT LOCATION" meta={`${activeAction} · origin`} rect={panels.pitch} locked={locked} onPointerDown={beginPanelInteraction}>
-            <div className="pitch-wrap" role="button" tabIndex={0} onClick={addEvent} onKeyDown={e=>{if(e.key==="Enter"||e.key===" ")recordEvent(50,50)}}><MiniPitch/>{events.slice(0,8).map(event=><i key={event.id} className={`event-dot ${event.team.toLowerCase()}`} style={{left:`${event.x}%`,top:`${event.y}%`}}/>)}<small>ATTACKING DIRECTION →</small></div>
+          <PanelWindow id="pitch" title="EVENT LOCATION" meta={`${activeAction} · ${routedActions.has(activeAction)?routeOrigin?"destination":"origin":"single point"}`} rect={panels.pitch} locked={locked} onPointerDown={beginPanelInteraction}>
+            <div className="pitch-wrap" role="button" tabIndex={0} aria-label={routedActions.has(activeAction)?routeOrigin?"Choose event destination":"Choose event origin":"Tag event location on pitch"} onClick={addEvent} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();captureLocation({x:50,y:50})}}}><MiniPitch/><div className="route-layer-copy">{events.slice(0,8).map(event=><RouteArrow key={event.id} event={event}/>)}</div>{events.slice(0,8).filter(event=>event.endX===undefined).map(event=><i key={event.id} className={`event-dot ${event.team.toLowerCase()}`} style={{left:`${event.x}%`,top:`${event.y}%`}}/>)}{routeOrigin&&<i className={`route-origin ${activeTeam.toLowerCase()}`} style={{left:`${routeOrigin.x}%`,top:`${routeOrigin.y}%`}}/>}<div className={`route-prompt ${routeOrigin?"destination":""}`}>{routedActions.has(activeAction)?routeOrigin?"2 · CLICK DESTINATION":"1 · CLICK ORIGIN":"CLICK LOCATION"}</div><small>ATTACKING DIRECTION →</small></div>
           </PanelWindow>
 
           <PanelWindow id="events" title="LIVE EVENT LOG" meta={`${events.length} records`} rect={panels.events} locked={locked} onPointerDown={beginPanelInteraction}>
-            <div className="event-list">{events.slice(0,8).map(e=><button key={e.id} onClick={()=>setClock(Number(e.minute.split(":")[0])*60+Number(e.minute.split(":")[1]))}><time>{e.minute}</time><i>{e.action[0]}</i><span><b>{e.action}</b><small>{e.player} · {e.outcome}</small></span><strong>›</strong></button>)}</div>
+            <div className="event-list">{events.slice(0,8).map(e=><button key={e.id} onClick={()=>setClock(Number(e.minute.split(":")[0])*60+Number(e.minute.split(":")[1]))}><time>{e.minute}</time><i>{e.action[0]}</i><span><b>{e.action}</b><small>{e.player} · {e.outcome}{routeDistance(e)!==null?` · ${routeDistance(e)} m`:""}</small></span><strong>›</strong></button>)}</div>
           </PanelWindow>
         </div> : <div className="illustrator-layout">
           <section className="fm-panel canvas-panel"><header><div><span>TACTICAL CANVAS</span><h1>Counter-press after loss</h1></div><button className="fm-primary" onClick={()=>notify("Render queued")}>EXPORT TACTICAL VIDEO »</button></header><div className="illustrator-canvas"><div className="video-grid"><MiniPitch/></div><div className="draw-ring one"/><div className="draw-ring two"/><div className="draw-zone"/><div className="draw-arrow a1">➜</div><div className="draw-arrow a2">➜</div></div><footer><button>▶ PLAY SEQUENCE</button><div><span/></div><b>00:08.0</b></footer></section>
