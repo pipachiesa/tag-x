@@ -19,6 +19,7 @@ const routedActions = new Set(["Pass","Cross","Carry","Clearance"]);
 const outcomes = ["Successful","Unsuccessful","Goal","Blocked","Saved","Off target","Won","Lost"];
 const markerColors = ["#5b8def","#10a37f","#f4c95d","#ef6c75","#c084fc","#f3f3f3"];
 const markerShapes:MarkerShape[] = ["circle","square","diamond","triangle"];
+const PANEL_LAYOUT_STORAGE_KEY = "tagx-panel-layout-v2";
 const players = ["01 F. Armani","02 S. Boselli","03 R. Funes Mori","05 M. Kranevitter","08 N. Fernández","10 M. Lanzini","11 F. Colidio","19 C. Echeverri"];
 const seededEvents:EventRecord[] = [
   {id:128,minute:"42:08",team:"RIV",player:"10 M. Lanzini",action:"Pass",outcome:"Successful",x:32,y:61,endX:55,endY:43,color:"#5b8def",marker:"circle"},
@@ -31,10 +32,10 @@ const seededSessions:MatchSession[] = [
   {id:"racing-independiente",matchName:"Racing Club vs Independiente",competition:"Liga Profesional · El Cilindro",clock:0,events:[]},
 ];
 const defaultPanels:Record<PanelKey,PanelRect> = {
-  video:{x:0,y:0,w:8,h:7,z:1},
-  tagger:{x:8,y:0,w:4,h:11,z:2},
-  pitch:{x:0,y:7,w:5,h:5,z:3},
-  events:{x:5,y:7,w:3,h:5,z:4},
+  video:{x:0,y:0,w:6,h:7,z:1},
+  pitch:{x:6,y:0,w:6,h:7,z:2},
+  tagger:{x:0,y:7,w:8,h:11,z:3},
+  events:{x:8,y:7,w:4,h:11,z:4},
 };
 const panelOptions = [
   {id:"phase",label:"Phase analysis",detail:"Build-up, press, transition and block"},
@@ -85,7 +86,7 @@ export default function Home(){
   const [importOpen,setImportOpen] = useState(false);
   const [toast,setToast] = useState("");
   const [tool,setTool] = useState("Arrow");
-  const [locked,setLocked] = useState(false);
+  const [locked,setLocked] = useState(true);
   const [panels,setPanels] = useState(defaultPanels);
   const [videoUrl,setVideoUrl] = useState("");
   const [videoName,setVideoName] = useState("");
@@ -98,8 +99,8 @@ export default function Home(){
   const activeSession = sessions.find(session=>session.id===activeSessionId) || sessions[0];
   const {clock,events,matchName,competition} = activeSession;
 
-  useEffect(()=>{try{const saved=window.localStorage.getItem("tagx-panel-layout");if(saved){const parsed=JSON.parse(saved) as Record<PanelKey,PanelRect>;if(parsed.video&&parsed.tagger&&parsed.pitch&&parsed.events)window.setTimeout(()=>setPanels(parsed),0)}}catch{window.localStorage.removeItem("tagx-panel-layout")}},[]);
-  useEffect(()=>{try{window.localStorage.setItem("tagx-panel-layout",JSON.stringify(panels))}catch{/* Storage can be unavailable without breaking the workspace. */}},[panels]);
+  useEffect(()=>{try{const saved=window.localStorage.getItem(PANEL_LAYOUT_STORAGE_KEY);if(saved){const parsed=JSON.parse(saved) as Record<PanelKey,PanelRect>;if(parsed.video&&parsed.tagger&&parsed.pitch&&parsed.events)window.setTimeout(()=>setPanels(parsed),0)}}catch{window.localStorage.removeItem(PANEL_LAYOUT_STORAGE_KEY)}},[]);
+  useEffect(()=>{try{window.localStorage.setItem(PANEL_LAYOUT_STORAGE_KEY,JSON.stringify(panels))}catch{/* Storage can be unavailable without breaking the workspace. */}},[panels]);
   useEffect(()=>{window.setTimeout(()=>{try{const saved=window.localStorage.getItem("tagx-match-sessions");const selected=window.localStorage.getItem("tagx-active-session");if(saved){const parsed=JSON.parse(saved) as MatchSession[];if(Array.isArray(parsed)&&parsed.length){setSessions(parsed);setActiveSessionId(selected&&parsed.some(session=>session.id===selected)?selected:parsed[0].id)}}}catch{window.localStorage.removeItem("tagx-match-sessions");window.localStorage.removeItem("tagx-active-session")}finally{setSessionsReady(true)}},0)},[]);
   useEffect(()=>{if(!sessionsReady)return;try{window.localStorage.setItem("tagx-match-sessions",JSON.stringify(sessions));window.localStorage.setItem("tagx-active-session",activeSessionId)}catch{/* Sessions continue in memory if storage is full. */}},[sessions,activeSessionId,sessionsReady]);
   useEffect(()=>{if(videoUrl||!playing)return;const timer=window.setInterval(()=>setSessions(current=>current.map(session=>session.id===activeSessionId?{...session,clock:session.clock+1}:session)),1000);return()=>window.clearInterval(timer)},[playing,videoUrl,activeSessionId]);
