@@ -7,7 +7,8 @@ type View = "tagging" | "illustrator";
 type PanelKey = "video" | "tagger" | "pitch" | "events";
 type PanelRect = { x: number; y: number; w: number; h: number; z: number };
 type Point = { x:number; y:number };
-type EventRecord = { id:number; minute:string; team:TeamCode; player:string; action:string; outcome:string; x:number; y:number; endX?:number; endY?:number; goalX?:number; goalY?:number };
+type MarkerShape = "circle" | "square" | "diamond" | "triangle";
+type EventRecord = { id:number; minute:string; team:TeamCode; player:string; action:string; outcome:string; x:number; y:number; endX?:number; endY?:number; goalX?:number; goalY?:number; color?:string; marker?:MarkerShape };
 
 const COLS = 12;
 const ROW = 62;
@@ -15,6 +16,8 @@ const playbackSpeeds = [0.25,0.5,1,1.5,2];
 const actions = ["Pass","Shot","Cross","Carry","Recovery","Tackle","Interception","Clearance","Aerial duel","Foul"];
 const routedActions = new Set(["Pass","Cross","Carry","Clearance"]);
 const outcomes = ["Successful","Unsuccessful","Goal","Blocked","Saved","Off target","Won","Lost"];
+const markerColors = ["#5b8def","#10a37f","#f4c95d","#ef6c75","#c084fc","#f3f3f3"];
+const markerShapes:MarkerShape[] = ["circle","square","diamond","triangle"];
 const players = ["01 F. Armani","02 S. Boselli","03 R. Funes Mori","05 M. Kranevitter","08 N. Fernández","10 M. Lanzini","11 F. Colidio","19 C. Echeverri"];
 const seededEvents:EventRecord[] = [
   {id:128,minute:"42:08",team:"RIV",player:"10 M. Lanzini",action:"Pass",outcome:"Successful",x:32,y:61,endX:55,endY:43},
@@ -36,12 +39,13 @@ const panelOptions = [
 ];
 
 function Mark(){return <div className="tx-mark"><b>T</b><span>X</span></div>}
-function MiniPitch(){return <div className="mini-pitch"><i className="halfway"/><i className="circle"/><i className="box left"/><i className="box right"/></div>}
+function MiniPitch(){return <div className="mini-pitch" aria-hidden="true"><i className="halfway"/><i className="circle"/><i className="center-spot"/><i className="box left"/><i className="box right"/><i className="six left"/><i className="six right"/><i className="goal left"/><i className="goal right"/><i className="penalty-spot left"/><i className="penalty-spot right"/><i className="penalty-arc left"/><i className="penalty-arc right"/><i className="corner tl"/><i className="corner tr"/><i className="corner bl"/><i className="corner br"/></div>}
 function routeDistance(event:EventRecord){if(event.endX===undefined||event.endY===undefined)return null;return Math.round(Math.hypot((event.endX-event.x)*1.05,(event.endY-event.y)*.68))}
 function RouteArrow({event}:{event:EventRecord}){
   if(event.endX===undefined||event.endY===undefined)return null;
   const distance=routeDistance(event);
-  return <><svg className={`route-arrow ${event.team.toLowerCase()}`} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><defs><marker id={`head-${event.id}`} markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L5,2.5 L0,5 Z"/></marker></defs><line x1={event.x} y1={event.y} x2={event.endX} y2={event.endY} markerEnd={`url(#head-${event.id})`}/><circle cx={event.x} cy={event.y} r="1.35"/></svg><b className={`route-distance ${event.team.toLowerCase()}`} style={{left:`${(event.x+event.endX)/2}%`,top:`${(event.y+event.endY)/2}%`}}>{distance} m</b></>
+  const color=event.color||(event.team==="RIV"?"#5b8def":"#f4c95d");
+  return <><svg className="route-arrow" style={{color}} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><defs><marker id={`head-${event.id}`} markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L5,2.5 L0,5 Z"/></marker></defs><line x1={event.x} y1={event.y} x2={event.endX} y2={event.endY} markerEnd={`url(#head-${event.id})`}/></svg><b className="route-distance" style={{left:`${(event.x+event.endX)/2}%`,top:`${(event.y+event.endY)/2}%`,borderColor:color,color}}>{distance} m</b></>
 }
 
 function PanelWindow({id,title,meta,rect,locked,onPointerDown,children}:{id:PanelKey;title:string;meta:string;rect:PanelRect;locked:boolean;onPointerDown:(e:React.PointerEvent,id:PanelKey,mode:"move"|"resize")=>void;children:React.ReactNode}){
@@ -64,8 +68,10 @@ export default function Home(){
   const [activePlayer,setActivePlayer] = useState(players[5]);
   const [activeTeam,setActiveTeam] = useState<TeamCode>("RIV");
   const [events,setEvents] = useState(seededEvents);
-  const [routeOrigin,setRouteOrigin] = useState<Point|null>(null);
+  const [routeDraft,setRouteDraft] = useState<{start:Point;current:Point}|null>(null);
   const [shotOrigin,setShotOrigin] = useState<Point|null>(null);
+  const [markerColor,setMarkerColor] = useState(markerColors[0]);
+  const [markerShape,setMarkerShape] = useState<MarkerShape>("circle");
   const [enabledPanels,setEnabledPanels] = useState(["phase","goal","clip"]);
   const [configOpen,setConfigOpen] = useState(false);
   const [rosterOpen,setRosterOpen] = useState(false);
@@ -85,7 +91,7 @@ export default function Home(){
   useEffect(()=>{const saved=window.localStorage.getItem("tagx-panel-layout");if(saved)window.setTimeout(()=>setPanels(JSON.parse(saved)),0)},[]);
   useEffect(()=>{window.localStorage.setItem("tagx-panel-layout",JSON.stringify(panels))},[panels]);
   useEffect(()=>{if(videoUrl)return; if(!playing)return; const timer=window.setInterval(()=>setClock(c=>c+1),1000);return()=>window.clearInterval(timer)},[playing,videoUrl]);
-  useEffect(()=>{const handler=(e:KeyboardEvent)=>{const target=e.target;if(target instanceof HTMLInputElement||target instanceof HTMLSelectElement||target instanceof HTMLTextAreaElement||(target instanceof HTMLElement&&target.isContentEditable))return;if(e.code==="Space"){e.preventDefault();togglePlay()}if(e.key==="ArrowLeft"){e.preventDefault();seek(-5)}if(e.key==="ArrowRight"){e.preventDefault();seek(5)}const i=Number(e.key)-1;if(i>=0&&i<actions.length)chooseAction(actions[i]);if(e.key==="Escape"){setConfigOpen(false);setRosterOpen(false);setImportOpen(false);setRouteOrigin(null);setShotOrigin(null)}};window.addEventListener("keydown",handler);return()=>window.removeEventListener("keydown",handler)});
+  useEffect(()=>{const handler=(e:KeyboardEvent)=>{const target=e.target;if(target instanceof HTMLInputElement||target instanceof HTMLSelectElement||target instanceof HTMLTextAreaElement||(target instanceof HTMLElement&&target.isContentEditable))return;if(e.code==="Space"){e.preventDefault();togglePlay()}if(e.key==="ArrowLeft"){e.preventDefault();seek(-5)}if(e.key==="ArrowRight"){e.preventDefault();seek(5)}const i=Number(e.key)-1;if(i>=0&&i<actions.length)chooseAction(actions[i]);if(e.key==="Escape"){setConfigOpen(false);setRosterOpen(false);setImportOpen(false);setRouteDraft(null);setShotOrigin(null)}};window.addEventListener("keydown",handler);return()=>window.removeEventListener("keydown",handler)});
   useEffect(()=>()=>{if(videoUrl)URL.revokeObjectURL(videoUrl)},[videoUrl]);
 
   const formattedClock = useMemo(()=>`${String(Math.floor(clock/60)).padStart(2,"0")}:${String(clock%60).padStart(2,"0")}`,[clock]);
@@ -93,17 +99,26 @@ export default function Home(){
   function togglePlay(){if(videoRef.current){if(videoRef.current.paused)videoRef.current.play();else videoRef.current.pause();return}setPlaying(p=>!p)}
   function seek(seconds:number){if(videoRef.current){videoRef.current.currentTime=Math.max(0,videoRef.current.currentTime+seconds);return}setClock(c=>Math.max(0,c+seconds))}
   function changeSpeed(rate:number){setPlaybackRate(rate);if(videoRef.current)videoRef.current.playbackRate=rate}
-  function chooseAction(action:string){setActiveAction(action);setRouteOrigin(null);setShotOrigin(null)}
+  function chooseAction(action:string){setActiveAction(action);setRouteDraft(null);setShotOrigin(null)}
   function chooseVideo(file?:File){if(!file)return; if(videoUrl)URL.revokeObjectURL(videoUrl);setVideoUrl(URL.createObjectURL(file));setVideoName(file.name)}
   function startSession(){setImportOpen(false);setClock(0);setPlaying(false);notify("Match ready for tagging")}
-  function recordEvent(x:number,y:number,end?:Point,goal?:Point,outcome=activeOutcome){setEvents(current=>[{id:current[0].id+1,minute:formattedClock,team:activeTeam,player:activePlayer,action:activeAction,outcome,x,y,endX:end?.x,endY:end?.y,goalX:goal?.x,goalY:goal?.y},...current]);notify(`${activeAction} recorded · ${outcome}${end?` · ${routeDistance({id:0,minute:"",team:activeTeam,player:"",action:activeAction,outcome,x,y,endX:end.x,endY:end.y})} m`:""}`)}
+  function recordEvent(x:number,y:number,end?:Point,goal?:Point,outcome=activeOutcome){setEvents(current=>[{id:current[0].id+1,minute:formattedClock,team:activeTeam,player:activePlayer,action:activeAction,outcome,x,y,endX:end?.x,endY:end?.y,goalX:goal?.x,goalY:goal?.y,color:markerColor,marker:markerShape},...current]);notify(`${activeAction} recorded · ${outcome}${end?` · ${routeDistance({id:0,minute:"",team:activeTeam,player:"",action:activeAction,outcome,x,y,endX:end.x,endY:end.y})} m`:""}`)}
   function captureLocation(point:Point){
     if(activeAction==="Shot"){setShotOrigin(point);notify("Shot origin set · now choose the target on goal");return}
-    if(!routedActions.has(activeAction)){recordEvent(point.x,point.y);return}
-    if(!routeOrigin){setRouteOrigin(point);notify("Origin set · now click the destination");return}
-    recordEvent(routeOrigin.x,routeOrigin.y,point);setRouteOrigin(null);
+    recordEvent(point.x,point.y);
   }
-  function addEvent(e:React.MouseEvent<HTMLDivElement>){const r=e.currentTarget.getBoundingClientRect();captureLocation({x:Math.round((e.clientX-r.left)/r.width*100),y:Math.round((e.clientY-r.top)/r.height*100)})}
+  function pointFromPointer(e:React.PointerEvent<HTMLDivElement>):Point{const r=e.currentTarget.getBoundingClientRect();return{x:Math.max(0,Math.min(100,Math.round((e.clientX-r.left)/r.width*1000)/10)),y:Math.max(0,Math.min(100,Math.round((e.clientY-r.top)/r.height*1000)/10))}}
+  function beginPitchGesture(e:React.PointerEvent<HTMLDivElement>){
+    if(!routedActions.has(activeAction))return;
+    e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);
+    const start=pointFromPointer(e);setRouteDraft({start,current:start});
+  }
+  function movePitchGesture(e:React.PointerEvent<HTMLDivElement>){if(!routeDraft||!routedActions.has(activeAction))return;setRouteDraft(draft=>draft?{...draft,current:pointFromPointer(e)}:null)}
+  function endPitchGesture(e:React.PointerEvent<HTMLDivElement>){
+    const point=pointFromPointer(e);
+    if(routedActions.has(activeAction)&&routeDraft){const distance=Math.hypot(point.x-routeDraft.start.x,point.y-routeDraft.start.y);if(distance>1.5)recordEvent(routeDraft.start.x,routeDraft.start.y,point);else notify("Hold and drag to draw the route");setRouteDraft(null);return}
+    captureLocation(point);
+  }
   function addGoalTarget(e:React.MouseEvent<HTMLDivElement>){
     if(!shotOrigin){notify("First mark where the shot was taken on the pitch");return}
     const r=e.currentTarget.getBoundingClientRect(),goal={x:Math.round((e.clientX-r.left)/r.width*100),y:Math.round((e.clientY-r.top)/r.height*100)};
@@ -163,14 +178,15 @@ export default function Home(){
               <div className="step"><span>02</span><b>PLAYER</b><button onClick={()=>setRosterOpen(true)}>EDIT SQUAD</button></div><select value={activePlayer} onChange={e=>setActivePlayer(e.target.value)}>{players.map(p=><option key={p}>{p}</option>)}</select>
               <div className="step"><span>03</span><b>ACTION</b><button onClick={()=>notify("New action ready")}>＋ ADD</button></div><div className="action-grid">{actions.map((a,i)=><button key={a} className={activeAction===a?"selected":""} onClick={()=>chooseAction(a)}><span>{a}</span><kbd>{i+1}</kbd></button>)}</div>
               <div className="step"><span>04</span><b>OUTCOME</b><button onClick={()=>notify("New outcome ready")}>＋ ADD</button></div><div className="outcomes">{outcomes.map(o=><button key={o} className={activeOutcome===o?"selected":""} onClick={()=>setActiveOutcome(o)}><i/>{o}</button>)}</div>
-              {enabledPanels.includes("goal")&&<div className={`goal-control ${activeAction==="Shot"?"active":""}`}><div className="goal-heading"><b>GOAL FRAME · SHOTS / SAVES</b><small>{activeAction!=="Shot"?"SELECT SHOT":shotOrigin?"CLICK TARGET":"MARK SHOT ORIGIN FIRST"}</small></div><div className="goal-target" role="button" tabIndex={0} aria-label="Choose shot or save location on goal" onClick={addGoalTarget} onKeyDown={e=>{if((e.key==="Enter"||e.key===" ")&&shotOrigin){e.preventDefault();recordEvent(shotOrigin.x,shotOrigin.y,undefined,{x:50,y:50});setShotOrigin(null)}}}><div className="goal-mouth"><i/><i/><i/></div>{events.filter(event=>event.goalX!==undefined&&event.goalY!==undefined).slice(0,12).map(event=><i key={event.id} className={`goal-point ${event.outcome.toLowerCase().replace(" ","-")}`} style={{left:`${event.goalX}%`,top:`${event.goalY}%`}} title={`${event.action} · ${event.outcome}`}/>)}</div><p>Inside the frame = on target · outside = off target</p></div>}
+              <div className="marker-control"><div className="marker-heading"><b>MARK STYLE</b><small>COLOR & SHAPE</small></div><div className="marker-options"><div className="color-options">{markerColors.map(color=><button key={color} aria-label={`Use ${color}`} aria-pressed={markerColor===color} className={markerColor===color?"selected":""} style={{backgroundColor:color}} onClick={()=>setMarkerColor(color)}/>)}</div><div className="shape-options">{markerShapes.map(shape=><button key={shape} aria-label={`Use ${shape}`} aria-pressed={markerShape===shape} className={markerShape===shape?"selected":""} onClick={()=>setMarkerShape(shape)}><i className={`marker-sample ${shape}`}/></button>)}</div></div></div>
+              {enabledPanels.includes("goal")&&<div className={`goal-control ${activeAction==="Shot"?"active":""}`}><div className="goal-heading"><b>SHOT PLACEMENT · SHOTS / SAVES</b><small>{activeAction!=="Shot"?"SELECT SHOT":shotOrigin?"CHOOSE PLACEMENT":"MARK SHOT ORIGIN"}</small></div><div className="goal-target" role="button" tabIndex={0} aria-label="Choose shot or save location on goal" onClick={addGoalTarget} onKeyDown={e=>{if((e.key==="Enter"||e.key===" ")&&shotOrigin){e.preventDefault();recordEvent(shotOrigin.x,shotOrigin.y,undefined,{x:50,y:50});setShotOrigin(null)}}}><div className="goal-depth"/><div className="goal-mouth"><i/><i/><i/><span/><span/></div><div className="goal-ground"/>{events.filter(event=>event.goalX!==undefined&&event.goalY!==undefined).slice(0,12).map(event=><i key={event.id} className={`goal-point ${event.outcome.toLowerCase().replace(" ","-")}`} style={{left:`${event.goalX}%`,top:`${event.goalY}%`,backgroundColor:event.color}} title={`${event.action} · ${event.outcome}`}/>)}</div><p>Inside the posts = on target · outside = off target</p></div>}
               {enabledPanels.includes("phase")&&<div className="optional-control"><div><b>PHASE ANALYSIS</b><small>OPTIONAL POP-UP CONTROL</small></div><select defaultValue="Build-up"><option>Build-up</option><option>High press</option><option>Counter attack</option><option>Low block</option><option>Transition</option></select></div>}
               <button className="next" onClick={()=>notify("Choose a location on the pitch")}>NEXT: CHOOSE LOCATION <span>→</span></button>
             </div>
           </PanelWindow>
 
-          <PanelWindow id="pitch" title="EVENT LOCATION" meta={`${activeAction} · ${activeAction==="Shot"?shotOrigin?"choose goal target":"origin":routedActions.has(activeAction)?routeOrigin?"destination":"origin":"single point"}`} rect={panels.pitch} locked={locked} onPointerDown={beginPanelInteraction}>
-            <div className="pitch-wrap" role="button" tabIndex={0} aria-label={routedActions.has(activeAction)?routeOrigin?"Choose event destination":"Choose event origin":"Tag event location on pitch"} onClick={addEvent} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();captureLocation({x:50,y:50})}}}><MiniPitch/><div className="route-layer-copy">{events.slice(0,8).map(event=><RouteArrow key={event.id} event={event}/>)}</div>{events.slice(0,8).filter(event=>event.endX===undefined).map(event=><i key={event.id} className={`event-dot ${event.team.toLowerCase()}`} style={{left:`${event.x}%`,top:`${event.y}%`}}/>)}{routeOrigin&&<i className={`route-origin ${activeTeam.toLowerCase()}`} style={{left:`${routeOrigin.x}%`,top:`${routeOrigin.y}%`}}/>}{shotOrigin&&<i className={`route-origin shot ${activeTeam.toLowerCase()}`} style={{left:`${shotOrigin.x}%`,top:`${shotOrigin.y}%`}}/>}<div className={`route-prompt ${routeOrigin||shotOrigin?"destination":""}`}>{activeAction==="Shot"?shotOrigin?"2 · CHOOSE TARGET ON GOAL":"1 · CLICK SHOT ORIGIN":routedActions.has(activeAction)?routeOrigin?"2 · CLICK DESTINATION":"1 · CLICK ORIGIN":"CLICK LOCATION"}</div><small>ATTACKING DIRECTION →</small></div>
+          <PanelWindow id="pitch" title="EVENT LOCATION" meta={`${activeAction} · ${activeAction==="Shot"?shotOrigin?"choose goal target":"origin":routedActions.has(activeAction)?"hold & drag":"single point"}`} rect={panels.pitch} locked={locked} onPointerDown={beginPanelInteraction}>
+            <div className="pitch-wrap"><div className="field-stage" role="button" tabIndex={0} aria-label={routedActions.has(activeAction)?"Hold and drag to draw the event route":"Tag event location on pitch"} onPointerDown={beginPitchGesture} onPointerMove={movePitchGesture} onPointerUp={endPitchGesture} onPointerCancel={()=>setRouteDraft(null)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();captureLocation({x:50,y:50})}}}><MiniPitch/><div className="route-layer-copy">{events.slice(0,8).map(event=><RouteArrow key={event.id} event={event}/>)}{routeDraft&&<RouteArrow event={{id:-1,minute:"",team:activeTeam,player:"",action:activeAction,outcome:activeOutcome,x:routeDraft.start.x,y:routeDraft.start.y,endX:routeDraft.current.x,endY:routeDraft.current.y,color:markerColor,marker:markerShape}}/>}</div>{events.slice(0,8).map(event=>{const color=event.color||(event.team==="RIV"?"#5b8def":"#f4c95d");return <i key={event.id} className={`event-marker ${event.marker||"circle"}`} style={{left:`${event.x}%`,top:`${event.y}%`,backgroundColor:color,"--shape-color":color} as React.CSSProperties}/>})}{shotOrigin&&<i className={`route-origin shot ${activeTeam.toLowerCase()}`} style={{left:`${shotOrigin.x}%`,top:`${shotOrigin.y}%`}}/>}<div className={`route-prompt ${routeDraft||shotOrigin?"destination":""}`}>{activeAction==="Shot"?shotOrigin?"2 · CHOOSE PLACEMENT ON GOAL":"CLICK SHOT ORIGIN":routedActions.has(activeAction)?routeDraft?"DRAG TO DESTINATION · RELEASE TO SAVE":"HOLD & DRAG TO DRAW ROUTE":"CLICK LOCATION"}</div><small>ATTACKING DIRECTION →</small></div><p className="pitch-help">{routedActions.has(activeAction)?"Press at the origin, drag the route and release at the destination.":"Click once to place the event."}</p></div>
           </PanelWindow>
 
           <PanelWindow id="events" title="LIVE EVENT LOG" meta={`${events.length} records`} rect={panels.events} locked={locked} onPointerDown={beginPanelInteraction}>
