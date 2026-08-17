@@ -2,66 +2,163 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-type EventRecord = { id:number; minute:string; team:"RIV"|"BOC"; player:string; action:string; outcome:string; x:number; y:number };
-const actions=["Pass","Shot","Cross","Carry","Recovery","Tackle","Interception","Clearance","Aerial duel","Foul"];
-const outcomes=["Successful","Unsuccessful","Goal","Blocked","Saved","Off target","Won","Lost"];
-const players=["01 F. Armani","02 S. Boselli","03 R. Funes Mori","05 M. Kranevitter","08 N. Fernández","10 M. Lanzini","11 F. Colidio","19 C. Echeverri"];
-const seededEvents:EventRecord[]=[
- {id:128,minute:"42:08",team:"RIV",player:"10 M. Lanzini",action:"Pass",outcome:"Successful",x:32,y:61},
- {id:127,minute:"41:54",team:"RIV",player:"11 F. Colidio",action:"Shot",outcome:"Blocked",x:84,y:42},
- {id:126,minute:"41:31",team:"BOC",player:"09 M. Merentiel",action:"Recovery",outcome:"Won",x:57,y:72},
- {id:125,minute:"40:48",team:"RIV",player:"08 N. Fernández",action:"Cross",outcome:"Successful",x:92,y:18},
+type TeamCode = "RIV" | "BOC";
+type View = "tagging" | "illustrator";
+type PanelKey = "video" | "tagger" | "pitch" | "events";
+type PanelRect = { x: number; y: number; w: number; h: number; z: number };
+type EventRecord = { id:number; minute:string; team:TeamCode; player:string; action:string; outcome:string; x:number; y:number };
+
+const COLS = 12;
+const ROW = 62;
+const actions = ["Pass","Shot","Cross","Carry","Recovery","Tackle","Interception","Clearance","Aerial duel","Foul"];
+const outcomes = ["Successful","Unsuccessful","Goal","Blocked","Saved","Off target","Won","Lost"];
+const players = ["01 F. Armani","02 S. Boselli","03 R. Funes Mori","05 M. Kranevitter","08 N. Fernández","10 M. Lanzini","11 F. Colidio","19 C. Echeverri"];
+const seededEvents:EventRecord[] = [
+  {id:128,minute:"42:08",team:"RIV",player:"10 M. Lanzini",action:"Pass",outcome:"Successful",x:32,y:61},
+  {id:127,minute:"41:54",team:"RIV",player:"11 F. Colidio",action:"Shot",outcome:"Blocked",x:84,y:42},
+  {id:126,minute:"41:31",team:"BOC",player:"09 M. Merentiel",action:"Recovery",outcome:"Won",x:57,y:72},
+  {id:125,minute:"40:48",team:"RIV",player:"08 N. Fernández",action:"Cross",outcome:"Successful",x:92,y:18},
 ];
-const panelOptions=[
- {id:"phase",label:"Phase analysis",detail:"Build-up, press, transition and block"},
- {id:"goal",label:"Goal frame",detail:"Shot placement and goalkeeper outcome"},
- {id:"note",label:"Quick note",detail:"Add context without leaving the flow"},
- {id:"clip",label:"Clip controls",detail:"Pre-roll, post-roll and playlist"},
+const defaultPanels:Record<PanelKey,PanelRect> = {
+  video:{x:0,y:0,w:8,h:7,z:1},
+  tagger:{x:8,y:0,w:4,h:11,z:2},
+  pitch:{x:0,y:7,w:5,h:5,z:3},
+  events:{x:5,y:7,w:3,h:5,z:4},
+};
+const panelOptions = [
+  {id:"phase",label:"Phase analysis",detail:"Build-up, press, transition and block"},
+  {id:"goal",label:"Goal frame",detail:"Shot placement and goalkeeper outcome"},
+  {id:"note",label:"Quick note",detail:"Context without leaving the tagging flow"},
+  {id:"clip",label:"Clip controls",detail:"Pre-roll, post-roll and playlist"},
 ];
 
-function TagXMark(){return <div className="brand-mark" aria-hidden="true"><span>T</span><b>X</b></div>}
-function MiniPitch(){return <div className="mini-pitch" aria-label="Football pitch overview"><div className="pitch-line halfway"/><div className="pitch-circle"/><div className="pitch-box left"/><div className="pitch-box right"/></div>}
+function Mark(){return <div className="tx-mark"><b>T</b><span>X</span></div>}
+function MiniPitch(){return <div className="mini-pitch"><i className="halfway"/><i className="circle"/><i className="box left"/><i className="box right"/></div>}
+
+function PanelWindow({id,title,meta,rect,locked,onPointerDown,children}:{id:PanelKey;title:string;meta:string;rect:PanelRect;locked:boolean;onPointerDown:(e:React.PointerEvent,id:PanelKey,mode:"move"|"resize")=>void;children:React.ReactNode}){
+  return <section className={`desk-panel desk-${id}`} style={{left:`calc(${rect.x / COLS * 100}% + 4px)`,top:rect.y*ROW+4,width:`calc(${rect.w / COLS * 100}% - 8px)`,height:rect.h*ROW-8,zIndex:rect.z}} onPointerDown={e=>e.currentTarget.parentElement&&void 0}>
+    <header className="panel-bar" onPointerDown={e=>!locked&&onPointerDown(e,id,"move")}>
+      <div className="drag-dots" aria-hidden="true">⠿</div><strong>{title}</strong><span>{meta}</span><div className="panel-tools"><i/><i/></div>
+    </header>
+    <div className="panel-body">{children}</div>
+    {!locked&&<button className="resize-handle" aria-label={`Resize ${title}`} onPointerDown={e=>onPointerDown(e,id,"resize")}/>} 
+  </section>
+}
 
 export default function Home(){
- const [view,setView]=useState<"tagging"|"illustrator">("tagging");
- const [configOpen,setConfigOpen]=useState(false),[rosterOpen,setRosterOpen]=useState(false),[playing,setPlaying]=useState(false);
- const [clock,setClock]=useState(2531),[activeAction,setActiveAction]=useState("Pass"),[activeOutcome,setActiveOutcome]=useState("Successful"),[activePlayer,setActivePlayer]=useState(players[5]);
- const [activeTeam,setActiveTeam]=useState<"RIV"|"BOC">("RIV"),[events,setEvents]=useState(seededEvents),[enabledPanels,setEnabledPanels]=useState(["phase","goal","clip"]),[toast,setToast]=useState(""),[tool,setTool]=useState("Arrow");
- const fileRef=useRef<HTMLInputElement>(null);
- useEffect(()=>{if(!playing)return;const timer=window.setInterval(()=>setClock(c=>c+1),1000);return()=>window.clearInterval(timer)},[playing]);
- useEffect(()=>{const handler=(e:KeyboardEvent)=>{if(e.code==="Space"&&!(e.target instanceof HTMLInputElement)){e.preventDefault();setPlaying(p=>!p)}const i=Number(e.key)-1;if(i>=0&&i<actions.length)setActiveAction(actions[i]);if(e.key==="Escape"){setConfigOpen(false);setRosterOpen(false)}};window.addEventListener("keydown",handler);return()=>window.removeEventListener("keydown",handler)},[]);
- const formattedClock=useMemo(()=>`${String(Math.floor(clock/60)).padStart(2,"0")}:${String(clock%60).padStart(2,"0")}`,[clock]);
- function showToast(message:string){setToast(message);window.setTimeout(()=>setToast(""),2200)}
- function addEvent(e:React.MouseEvent<HTMLDivElement>){const rect=e.currentTarget.getBoundingClientRect(),x=Math.round(((e.clientX-rect.left)/rect.width)*100),y=Math.round(((e.clientY-rect.top)/rect.height)*100);const next:EventRecord={id:events[0].id+1,minute:formattedClock,team:activeTeam,player:activePlayer,action:activeAction,outcome:activeOutcome,x,y};setEvents([next,...events]);showToast(`${activeAction} tagged · ${activePlayer}`)}
- function togglePanel(id:string){setEnabledPanels(current=>current.includes(id)?current.filter(item=>item!==id):[...current,id])}
- return <main className="app-shell">
-  <aside className="sidebar">
-   <div className="brand"><TagXMark/><div><strong>TAG X</strong><span>VIDEO INTELLIGENCE</span></div></div>
-   <div className="project-card"><span className="eyebrow">ACTIVE MATCH</span><strong>River Plate <b>2</b> — <b>1</b> Boca Juniors</strong><small>El Monumental · Friendly</small></div>
-   <nav aria-label="Primary navigation"><button className={view==="tagging"?"active":""} onClick={()=>setView("tagging")}><span>⌾</span> Match tagging</button><button className={view==="illustrator"?"active":""} onClick={()=>setView("illustrator")}><span>✎</span> Illustrator</button></nav>
-   <div className="side-lower"><button className="ghost-row" onClick={()=>setRosterOpen(true)}><span>♙</span> Teams & rosters <b>›</b></button><button className="ghost-row" onClick={()=>setConfigOpen(true)}><span>⚙</span> Workspace controls <b>›</b></button><div className="shortcut-card"><span>KEYBOARD</span><p><kbd>Space</kbd> play / pause</p><p><kbd>1–9</kbd> choose event</p><p><kbd>Esc</kbd> close panels</p></div><div className="user-card"><span>FC</span><div><strong>Felipe Chiesa</strong><small>Lead analyst</small></div><b>···</b></div></div>
-  </aside>
-  <section className="workspace">
-   <header className="topbar"><div><p>{view==="tagging"?"MATCH TAGGING":"ILLUSTRATOR"}</p><h1>{view==="tagging"?"River Plate vs Boca Juniors":"Tactical clip · 41:54"}</h1></div><div className="top-actions"><span className="live-pill"><i/> {playing?"TRACKING":"READY"} · {formattedClock}</span><button onClick={()=>showToast("Session saved")}>Save</button><button className="primary" onClick={()=>showToast(view==="tagging"?"Export prepared":"Render queued")}>{view==="tagging"?"Export":"Render video"}</button></div></header>
-   {view==="tagging"?<div className="tagging-layout">
-    <section className="video-column"><div className="video-stage" onClick={()=>setPlaying(p=>!p)}><div className="stadium-bg"><div className="stadium-pitch"><MiniPitch/></div></div><div className="scorebug"><b>RIV</b><strong>2 — 1</strong><b>BOC</b><span>2nd half</span></div>{!playing&&<button className="play-big" aria-label="Play video">▶</button>}<div className="video-hint">Click video or press Space to {playing?"pause":"play"}</div></div>
-     <div className="transport"><button onClick={()=>setClock(c=>Math.max(0,c-5))}>−5s</button><button className="transport-main" onClick={()=>setPlaying(p=>!p)}>{playing?"Ⅱ Pause":"▶ Play"}</button><button onClick={()=>setClock(c=>c+5)}>+5s</button><div className="timeline"><span style={{width:`${(clock/5400)*100}%`}}/></div><b>{formattedClock}</b><small>/ 90:00</small><button className="upload" onClick={()=>fileRef.current?.click()}>＋ Video</button><input ref={fileRef} type="file" accept="video/*" hidden onChange={()=>showToast("Video loaded")}/></div>
-     <div className="lower-grid"><div className="pitch-card card"><div className="card-heading"><div><span className="eyebrow">LOCATION</span><h2>Click where it happened</h2></div><span className="mode-pill">{activeAction} · origin</span></div><div className="tag-pitch" onClick={addEvent} role="button" tabIndex={0} aria-label="Tag event location on pitch"><MiniPitch/>{events.slice(0,9).map(event=><i key={event.id} className={`event-dot ${event.team.toLowerCase()}`} style={{left:`${event.x}%`,top:`${event.y}%`}}/>)}<div className="direction">ATTACKING DIRECTION →</div></div></div>
-      <div className="recent-card card"><div className="card-heading"><div><span className="eyebrow">LIVE LOG</span><h2>Recent events</h2></div><button onClick={()=>setEvents(events.slice(1))}>Undo</button></div><div className="event-list">{events.slice(0,6).map(event=><button key={event.id} onClick={()=>setClock(Number(event.minute.split(":")[0])*60+Number(event.minute.split(":")[1]))}><time>{event.minute}</time><span className={`event-icon ${event.team.toLowerCase()}`}>{event.action[0]}</span><div><strong>{event.action}</strong><small>{event.player} · {event.outcome}</small></div><b>›</b></button>)}</div></div></div>
-    </section>
-    <aside className="tag-panel"><div className="tag-panel-head"><div><span className="eyebrow">QUICK TAG</span><h2>Record event</h2></div><button aria-label="Configure panels" onClick={()=>setConfigOpen(true)}>⚙</button></div>
-     <div className="step"><span>01</span><label>Team</label></div><div className="segmented"><button className={activeTeam==="RIV"?"selected":""} onClick={()=>setActiveTeam("RIV")}><i className="team-dot river"/> River Plate</button><button className={activeTeam==="BOC"?"selected":""} onClick={()=>setActiveTeam("BOC")}><i className="team-dot boca"/> Boca Juniors</button></div>
-     <div className="step"><span>02</span><label>Player</label><button onClick={()=>setRosterOpen(true)}>Edit squad</button></div><select value={activePlayer} onChange={e=>setActivePlayer(e.target.value)}>{players.map(player=><option key={player}>{player}</option>)}</select>
-     <div className="step"><span>03</span><label>Action</label><button onClick={()=>showToast("Custom event added")}>＋ Add</button></div><div className="action-grid">{actions.map((action,index)=><button key={action} className={activeAction===action?"selected":""} onClick={()=>setActiveAction(action)}><kbd>{index+1}</kbd>{action}</button>)}</div>
-     <div className="step"><span>04</span><label>Outcome</label><button onClick={()=>showToast("Custom outcome added")}>＋ Add</button></div><div className="outcome-grid">{outcomes.map(outcome=><button key={outcome} className={activeOutcome===outcome?"selected":""} onClick={()=>setActiveOutcome(outcome)}><i/>{outcome}</button>)}</div>
-     {enabledPanels.includes("phase")&&<div className="optional-panel"><div><span>PHASE ANALYSIS</span><small>Optional control</small></div><select defaultValue="Build-up"><option>Build-up</option><option>High press</option><option>Counter attack</option><option>Low block</option><option>Transition</option></select></div>}
-     {enabledPanels.includes("clip")&&<div className="clip-row"><span>Clip</span><button>− 5s</button><strong>{formattedClock}</strong><button>＋ 5s</button></div>}<button className="commit" onClick={()=>showToast("Click a location on the pitch")}>Next: choose location <span>→</span></button>
-    </aside>
-   </div>:<div className="illustrator-layout"><section className="canvas-card"><div className="canvas-head"><div><span className="eyebrow">TACTICAL CANVAS</span><h2>Counter-press after loss</h2></div><div><button onClick={()=>showToast("Canvas cleared")}>Clear</button><button className="primary" onClick={()=>showToast("Frame saved")}>Save frame</button></div></div><div className="illustrator-canvas"><div className="stadium-bg"><div className="stadium-pitch"><MiniPitch/></div></div><div className="draw-ring one"/><div className="draw-ring two"/><div className="draw-arrow a1">➜</div><div className="draw-arrow a2">➜</div><div className="draw-zone"/><div className="frame-time">00:41:54.2</div></div><div className="sequence-bar"><button>▶ Preview</button><div><span style={{width:"68%"}}/></div><time>00:08.0</time></div></section>
-    <aside className="tools-card"><span className="eyebrow">DRAWING TOOLS</span><h2>Annotate the play</h2><div className="tools-grid">{["Select","Player ring","Spotlight","Arrow","Curved arrow","Link line","Distance","Area","Text"].map(item=><button key={item} className={tool===item?"selected":""} onClick={()=>setTool(item)}><span>{item==="Arrow"?"↗":item==="Area"?"◇":item==="Text"?"T":"○"}</span>{item}</button>)}</div><div className="style-controls"><label>Line colour <input type="color" defaultValue="#5784e6"/></label><label>Fill colour <input type="color" defaultValue="#d1e8ff"/></label><label>Opacity <input type="range" defaultValue="75"/></label><label>Stroke <input type="range" defaultValue="60"/></label></div><div className="frames"><div><span className="eyebrow">SEQUENCE</span><button>＋ Frame</button></div>{["41:52.0","41:54.2","41:57.8"].map((time,index)=><button key={time} className={index===1?"selected":""}><b>{index+1}</b><span>{time}<small>{index===1?"Current frame":"Match clip"}</small></span><strong>⋮</strong></button>)}</div></aside></div>}
-  </section>
-  {configOpen&&<div className="modal-backdrop" onMouseDown={()=>setConfigOpen(false)}><section className="modal" onMouseDown={e=>e.stopPropagation()}><header><div><span className="eyebrow">WORKSPACE CONTROLS</span><h2>Keep only what you need</h2><p>Optional panels appear inside Match Tagging, never as extra navigation.</p></div><button onClick={()=>setConfigOpen(false)}>×</button></header><div className="option-list">{panelOptions.map(panel=><button key={panel.id} onClick={()=>togglePanel(panel.id)}><span className={enabledPanels.includes(panel.id)?"toggle on":"toggle"}><i/></span><div><strong>{panel.label}</strong><small>{panel.detail}</small></div></button>)}</div><footer><button onClick={()=>setEnabledPanels([])}>Hide all</button><button className="primary" onClick={()=>setConfigOpen(false)}>Apply controls</button></footer></section></div>}
-  {rosterOpen&&<div className="modal-backdrop" onMouseDown={()=>setRosterOpen(false)}><section className="modal roster-modal" onMouseDown={e=>e.stopPropagation()}><header><div><span className="eyebrow">TEAM LIBRARY</span><h2>River Plate · First team</h2><p>Save this squad once and import it into future matches.</p></div><button onClick={()=>setRosterOpen(false)}>×</button></header><div className="roster-actions"><button className="primary" onClick={()=>showToast("Team saved to library")}>Save team to library</button><button>Import saved team</button><button>＋ Player</button></div><div className="roster-table">{players.map((player,index)=><div key={player}><span>{String(index+1).padStart(2,"0")}</span><strong>{player.slice(3)}</strong><small>{index<3?"DEF":index<5?"MID":"ATT"}</small><button>•••</button></div>)}</div></section></div>}
-  {toast&&<div className="toast"><i/>{toast}</div>}
- </main>
+  const [view,setView] = useState<View>("tagging");
+  const [playing,setPlaying] = useState(false);
+  const [clock,setClock] = useState(2531);
+  const [activeAction,setActiveAction] = useState("Pass");
+  const [activeOutcome,setActiveOutcome] = useState("Successful");
+  const [activePlayer,setActivePlayer] = useState(players[5]);
+  const [activeTeam,setActiveTeam] = useState<TeamCode>("RIV");
+  const [events,setEvents] = useState(seededEvents);
+  const [enabledPanels,setEnabledPanels] = useState(["phase","goal","clip"]);
+  const [configOpen,setConfigOpen] = useState(false);
+  const [rosterOpen,setRosterOpen] = useState(false);
+  const [importOpen,setImportOpen] = useState(false);
+  const [toast,setToast] = useState("");
+  const [tool,setTool] = useState("Arrow");
+  const [locked,setLocked] = useState(false);
+  const [panels,setPanels] = useState(defaultPanels);
+  const [videoUrl,setVideoUrl] = useState("");
+  const [videoName,setVideoName] = useState("");
+  const [matchName,setMatchName] = useState("River Plate vs Boca Juniors");
+  const [competition,setCompetition] = useState("Friendly · El Monumental");
+  const boardRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(()=>{const saved=window.localStorage.getItem("tagx-panel-layout");if(saved)window.setTimeout(()=>setPanels(JSON.parse(saved)),0)},[]);
+  useEffect(()=>{window.localStorage.setItem("tagx-panel-layout",JSON.stringify(panels))},[panels]);
+  useEffect(()=>{if(videoUrl)return; if(!playing)return; const timer=window.setInterval(()=>setClock(c=>c+1),1000);return()=>window.clearInterval(timer)},[playing,videoUrl]);
+  useEffect(()=>{const handler=(e:KeyboardEvent)=>{if(e.code==="Space"&&!(e.target instanceof HTMLInputElement)&&!(e.target instanceof HTMLSelectElement)){e.preventDefault();togglePlay()}const i=Number(e.key)-1;if(i>=0&&i<actions.length)setActiveAction(actions[i]);if(e.key==="Escape"){setConfigOpen(false);setRosterOpen(false);setImportOpen(false)}};window.addEventListener("keydown",handler);return()=>window.removeEventListener("keydown",handler)});
+  useEffect(()=>()=>{if(videoUrl)URL.revokeObjectURL(videoUrl)},[videoUrl]);
+
+  const formattedClock = useMemo(()=>`${String(Math.floor(clock/60)).padStart(2,"0")}:${String(clock%60).padStart(2,"0")}`,[clock]);
+  function notify(message:string){setToast(message);window.setTimeout(()=>setToast(""),2200)}
+  function togglePlay(){if(videoRef.current){if(videoRef.current.paused)videoRef.current.play();else videoRef.current.pause();return}setPlaying(p=>!p)}
+  function seek(seconds:number){if(videoRef.current){videoRef.current.currentTime=Math.max(0,videoRef.current.currentTime+seconds);return}setClock(c=>Math.max(0,c+seconds))}
+  function chooseVideo(file?:File){if(!file)return; if(videoUrl)URL.revokeObjectURL(videoUrl);setVideoUrl(URL.createObjectURL(file));setVideoName(file.name)}
+  function startSession(){setImportOpen(false);setClock(0);setPlaying(false);notify("Match ready for tagging")}
+  function recordEvent(x:number,y:number){setEvents(current=>[{id:current[0].id+1,minute:formattedClock,team:activeTeam,player:activePlayer,action:activeAction,outcome:activeOutcome,x,y},...current]);notify(`${activeAction} recorded · ${activePlayer}`)}
+  function addEvent(e:React.MouseEvent<HTMLDivElement>){const r=e.currentTarget.getBoundingClientRect();recordEvent(Math.round((e.clientX-r.left)/r.width*100),Math.round((e.clientY-r.top)/r.height*100))}
+  function togglePanel(id:string){setEnabledPanels(current=>current.includes(id)?current.filter(item=>item!==id):[...current,id])}
+  function resetLayout(){setPanels(defaultPanels);notify("Workspace layout restored")}
+  function beginPanelInteraction(e:React.PointerEvent,id:PanelKey,mode:"move"|"resize"){
+    if(locked||!boardRef.current)return;
+    e.preventDefault();e.stopPropagation();
+    const startX=e.clientX,startY=e.clientY,start=panels[id],cell=boardRef.current.clientWidth/COLS;
+    const topZ=Math.max(...Object.values(panels).map(p=>p.z))+1;
+    setPanels(current=>({...current,[id]:{...current[id],z:topZ}}));
+    const move=(event:PointerEvent)=>{
+      const dx=Math.round((event.clientX-startX)/cell),dy=Math.round((event.clientY-startY)/ROW);
+      setPanels(current=>{
+        const active=current[id];
+        if(mode==="move")return {...current,[id]:{...active,x:Math.max(0,Math.min(COLS-start.w,start.x+dx)),y:Math.max(0,start.y+dy)}};
+        return {...current,[id]:{...active,w:Math.max(id==="tagger"?3:4,Math.min(COLS-start.x,start.w+dx)),h:Math.max(id==="video"?5:4,start.h+dy)}};
+      });
+    };
+    const up=()=>{window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",up)};
+    window.addEventListener("pointermove",move);window.addEventListener("pointerup",up,{once:true});
+  }
+
+  return <main className="app-shell">
+    <header className="global-bar">
+      <div className="history-buttons"><button aria-label="Back">‹</button><button aria-label="Forward">›</button></div>
+      <div className="brand"><Mark/><div><b>TAG X</b><small>VIDEO INTELLIGENCE</small></div></div>
+      <nav className="global-nav"><button className="active">Workspace</button><button>Match</button><button>Teams</button></nav>
+      <div className="global-actions"><button aria-label="Search">⌕</button><button aria-label="Settings" onClick={()=>setConfigOpen(true)}>⚙</button><div className="date-box"><small>17/8/2026</small><b>{formattedClock}</b></div><button className="continue" onClick={()=>notify("Session saved")}>SAVE SESSION <span>»</span></button></div>
+    </header>
+
+    <div className="product-shell">
+      <aside className="module-rail">
+        <div className="match-card"><span>ACTIVE MATCH</span><b>{matchName}</b><small>{competition}</small><strong><i>RIV</i> 2 — 1 <i>BOC</i></strong></div>
+        <nav><button className={view==="tagging"?"active":""} onClick={()=>setView("tagging")}><span>⌾</span><b>Match Tagging</b><small>Collect events</small></button><button className={view==="illustrator"?"active":""} onClick={()=>setView("illustrator")}><span>✎</span><b>Illustrator</b><small>Build sequences</small></button></nav>
+        <div className="rail-bottom"><button onClick={()=>setRosterOpen(true)}>♙ <span>Team library</span></button><button onClick={()=>setConfigOpen(true)}>⚙ <span>Controls</span></button><div className="analyst"><i>FC</i><span><b>Felipe Chiesa</b><small>Lead analyst</small></span></div></div>
+      </aside>
+
+      <section className="main-area">
+        <div className="section-tabs"><div><button className="active">Overview</button><button>Event setup</button><button>Session history</button></div><div className="layout-actions"><span>LAYOUT</span><button onClick={()=>setLocked(l=>!l)}>{locked?"UNLOCK":"LOCK"}</button><button onClick={resetLayout}>RESET</button><button className="import-match" onClick={()=>setImportOpen(true)}>＋ IMPORT MATCH</button></div></div>
+        {view==="tagging" ? <div className="workspace-board" ref={boardRef}>
+          <PanelWindow id="video" title="MATCH VIDEO" meta={videoName||"No source imported"} rect={panels.video} locked={locked} onPointerDown={beginPanelInteraction}>
+            <div className={`video-stage ${videoUrl?"has-video":""}`}>
+              {videoUrl?<video ref={videoRef} src={videoUrl} controls onTimeUpdate={e=>setClock(Math.floor(e.currentTarget.currentTime))}><track kind="captions" srcLang="en" label="English"/></video>:<button className="import-empty" onClick={()=>setImportOpen(true)}><span className="video-grid"><MiniPitch/></span><span className="upload-icon">⇧</span><h2>Import match video</h2><span className="import-copy">Add the fixture, teams and an MP4/WebM source.</span><span className="choose-button">CHOOSE MATCH</span></button>}
+              {videoUrl&&<div className="scorebug"><b>RIV</b><strong>2 — 1</strong><b>BOC</b><span>2ND HALF</span></div>}
+            </div>
+            <div className="transport"><button onClick={()=>seek(-5)}>−5s</button><button className="play" onClick={togglePlay}>{playing?"Ⅱ PAUSE":"▶ PLAY"}</button><button onClick={()=>seek(5)}>+5s</button><div className="timeline"><span style={{width:`${Math.min(100,clock/5400*100)}%`}}/></div><b>{formattedClock}</b><button onClick={()=>setImportOpen(true)}>↥ SOURCE</button></div>
+          </PanelWindow>
+
+          <PanelWindow id="tagger" title="QUICK TAG" meta="Professional preset" rect={panels.tagger} locked={locked} onPointerDown={beginPanelInteraction}>
+            <div className="tagger-scroll">
+              <div className="step"><span>01</span><b>TEAM IN POSSESSION</b></div><div className="team-switch"><button className={activeTeam==="RIV"?"selected":""} onClick={()=>setActiveTeam("RIV")}>□ RIVER PLATE</button><button className={activeTeam==="BOC"?"selected":""} onClick={()=>setActiveTeam("BOC")}>■ BOCA JUNIORS</button></div>
+              <div className="step"><span>02</span><b>PLAYER</b><button onClick={()=>setRosterOpen(true)}>EDIT SQUAD</button></div><select value={activePlayer} onChange={e=>setActivePlayer(e.target.value)}>{players.map(p=><option key={p}>{p}</option>)}</select>
+              <div className="step"><span>03</span><b>ACTION</b><button onClick={()=>notify("New action ready")}>＋ ADD</button></div><div className="action-grid">{actions.map((a,i)=><button key={a} className={activeAction===a?"selected":""} onClick={()=>setActiveAction(a)}><span>{a}</span><kbd>{i+1}</kbd></button>)}</div>
+              <div className="step"><span>04</span><b>OUTCOME</b><button onClick={()=>notify("New outcome ready")}>＋ ADD</button></div><div className="outcomes">{outcomes.map(o=><button key={o} className={activeOutcome===o?"selected":""} onClick={()=>setActiveOutcome(o)}><i/>{o}</button>)}</div>
+              {enabledPanels.includes("phase")&&<div className="optional-control"><div><b>PHASE ANALYSIS</b><small>OPTIONAL POP-UP CONTROL</small></div><select defaultValue="Build-up"><option>Build-up</option><option>High press</option><option>Counter attack</option><option>Low block</option><option>Transition</option></select></div>}
+              <button className="next" onClick={()=>notify("Choose a location on the pitch")}>NEXT: CHOOSE LOCATION <span>→</span></button>
+            </div>
+          </PanelWindow>
+
+          <PanelWindow id="pitch" title="EVENT LOCATION" meta={`${activeAction} · origin`} rect={panels.pitch} locked={locked} onPointerDown={beginPanelInteraction}>
+            <div className="pitch-wrap" role="button" tabIndex={0} onClick={addEvent} onKeyDown={e=>{if(e.key==="Enter"||e.key===" ")recordEvent(50,50)}}><MiniPitch/>{events.slice(0,8).map(event=><i key={event.id} className={`event-dot ${event.team.toLowerCase()}`} style={{left:`${event.x}%`,top:`${event.y}%`}}/>)}<small>ATTACKING DIRECTION →</small></div>
+          </PanelWindow>
+
+          <PanelWindow id="events" title="LIVE EVENT LOG" meta={`${events.length} records`} rect={panels.events} locked={locked} onPointerDown={beginPanelInteraction}>
+            <div className="event-list">{events.slice(0,8).map(e=><button key={e.id} onClick={()=>setClock(Number(e.minute.split(":")[0])*60+Number(e.minute.split(":")[1]))}><time>{e.minute}</time><i>{e.action[0]}</i><span><b>{e.action}</b><small>{e.player} · {e.outcome}</small></span><strong>›</strong></button>)}</div>
+          </PanelWindow>
+        </div> : <div className="illustrator-layout">
+          <section className="fm-panel canvas-panel"><header><div><span>TACTICAL CANVAS</span><h1>Counter-press after loss</h1></div><button className="fm-primary" onClick={()=>notify("Render queued")}>EXPORT TACTICAL VIDEO »</button></header><div className="illustrator-canvas"><div className="video-grid"><MiniPitch/></div><div className="draw-ring one"/><div className="draw-ring two"/><div className="draw-zone"/><div className="draw-arrow a1">➜</div><div className="draw-arrow a2">➜</div></div><footer><button>▶ PLAY SEQUENCE</button><div><span/></div><b>00:08.0</b></footer></section>
+          <section className="fm-panel tool-panel"><header><div><span>CUSTOMIZE TOOL</span><h1>Annotate the play</h1></div></header><div className="tool-grid">{["Select","Player ring","Spotlight","Arrow","Curved arrow","Link line","Distance","Area","Text"].map(t=><button key={t} className={tool===t?"selected":""} onClick={()=>setTool(t)}><i>{t==="Arrow"?"↗":t==="Text"?"T":"○"}</i>{t}</button>)}</div><div className="style-row"><label>LINE <input type="color" defaultValue="#5784e6"/></label><label>FILL <input type="color" defaultValue="#d1e8ff"/></label><label>OPACITY <input type="range" defaultValue="70"/></label></div><div className="frames"><span>SEQUENCE & TIMELINE</span>{["41:52.0","41:54.2","41:57.8"].map((t,i)=><button key={t} className={i===1?"selected":""}><b>{i+1}</b><span>{t}<small>{i===1?"Current frame":"Match clip"}</small></span><strong>⋮</strong></button>)}</div></section>
+        </div>}
+      </section>
+    </div>
+
+    {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions */}
+    {importOpen&&<dialog open className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setImportOpen(false)}}><section className="modal import-modal"><header><div><span>NEW MATCH SESSION</span><h2>Import a match</h2><p>Set the fixture once, import a saved squad and attach the match video.</p></div><button onClick={()=>setImportOpen(false)}>×</button></header><div className="import-form"><label>Match name<input value={matchName} onChange={e=>setMatchName(e.target.value)}/></label><div><label>Competition<input value={competition} onChange={e=>setCompetition(e.target.value)}/></label><label>Match date<input type="date" defaultValue="2026-08-17"/></label></div><div><label>Home team<select defaultValue="River Plate"><option>River Plate</option><option>Import saved team…</option></select></label><label>Away team<select defaultValue="Boca Juniors"><option>Boca Juniors</option><option>Import saved team…</option></select></label></div><button className="file-drop" onClick={()=>fileRef.current?.click()}><span>⇧</span><b>{videoName||"Choose MP4 or WebM"}</b><small>{videoName?"Video attached":"The file remains on this device"}</small></button><input ref={fileRef} hidden type="file" accept="video/*" onChange={e=>chooseVideo(e.target.files?.[0])}/></div><footer><button onClick={()=>setImportOpen(false)}>CANCEL</button><button className="fm-primary" onClick={startSession}>CREATE & IMPORT MATCH »</button></footer></section></dialog>}
+    {configOpen&&<dialog open className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setConfigOpen(false)}}><section className="modal"><header><div><span>WORKSPACE CONTROLS</span><h2>Optional tagging pop-ups</h2><p>Phase analysis and secondary controls stay inside Match Tagging.</p></div><button onClick={()=>setConfigOpen(false)}>×</button></header><div className="option-list">{panelOptions.map(p=><button key={p.id} onClick={()=>togglePanel(p.id)}><span className={enabledPanels.includes(p.id)?"toggle on":"toggle"}><i/></span><span><b>{p.label}</b><small>{p.detail}</small></span></button>)}</div><footer><button onClick={()=>setEnabledPanels([])}>HIDE ALL</button><button className="fm-primary" onClick={()=>setConfigOpen(false)}>APPLY CONTROLS »</button></footer></section></dialog>}
+    {rosterOpen&&<dialog open className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setRosterOpen(false)}}><section className="modal roster-modal"><header><div><span>TEAM LIBRARY</span><h2>River Plate · First team</h2><p>Save this roster once and import it into future matches.</p></div><button onClick={()=>setRosterOpen(false)}>×</button></header><div className="roster-actions"><button className="fm-primary" onClick={()=>notify("Team saved to library")}>SAVE TEAM</button><button>IMPORT SAVED TEAM</button><button>＋ PLAYER</button></div><div className="roster-table">{players.map((p,i)=><div key={p}><span>{String(i+1).padStart(2,"0")}</span><b>{p.slice(3)}</b><small>{i<3?"DEF":i<5?"MID":"ATT"}</small><button>•••</button></div>)}</div></section></dialog>}
+    {toast&&<div className="toast"><i/>{toast}</div>}
+  </main>
 }
