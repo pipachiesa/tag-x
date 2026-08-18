@@ -267,10 +267,10 @@ export default function Home(){
     if(item.tool==="Text")return <text {...common} x={a.x} y={a.y} fill={item.color} stroke="none" fontSize="3.2" fontWeight="700">{item.text}</text>;
     if(item.tool==="Area")return <rect {...common} x={Math.min(a.x,b.x)} y={Math.min(a.y,b.y)} width={Math.abs(b.x-a.x)} height={Math.abs(b.y-a.y)} fill={item.fill} strokeWidth={selected?1.1:.6}/>;
     const arrowMarkerId=`illustrator-head-${item.id}`;
-    const arrowMarker=<defs><marker id={arrowMarkerId} markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L7,3.5 L0,7 Z" fill={item.color}/></marker></defs>;
+    const arrowMarker=<defs><marker id={arrowMarkerId} markerWidth="4" markerHeight="4" refX="3.6" refY="2" orient="auto" markerUnits="userSpaceOnUse" viewBox="0 0 4 4"><path d="M0,0 L4,2 L0,4 Z" fill={item.color}/></marker></defs>;
     if(item.tool==="Curved arrow"){const cx=(a.x+b.x)/2,cy=Math.min(a.y,b.y)-Math.abs(b.x-a.x)*.18;return <g {...common}>{arrowMarker}<path d={`M ${a.x} ${a.y} Q ${cx} ${cy} ${b.x} ${b.y}`} fill="none" strokeWidth={selected?1.2:.8} markerEnd={`url(#${arrowMarkerId})`}/></g>}
-    const marker=item.tool==="Arrow"?`url(#${arrowMarkerId})`:undefined,dash=item.tool==="Distance"?"2 1":undefined;
-    return <g {...common}>{item.tool==="Arrow"&&arrowMarker}<line x1={a.x} y1={a.y} x2={b.x} y2={b.y} strokeWidth={selected?1.2:.8} strokeDasharray={dash} markerEnd={marker}/>{item.tool==="Distance"&&<text x={(a.x+b.x)/2} y={(a.y+b.y)/2-1} fill={item.color} stroke="none" fontSize="2.8" textAnchor="middle">{Math.round(Math.hypot((b.x-a.x)*1.05,(b.y-a.y)*.68))} m</text>}</g>
+    const dash=item.tool==="Distance"?"2 1":undefined,angle=Math.atan2(b.y-a.y,b.x-a.x),headLength=3.4,headWidth=1.7,baseX=b.x-Math.cos(angle)*headLength,baseY=b.y-Math.sin(angle)*headLength,perpX=-Math.sin(angle)*headWidth,perpY=Math.cos(angle)*headWidth;
+    return <g {...common}><line x1={a.x} y1={a.y} x2={b.x} y2={b.y} strokeWidth={selected?1.2:.8} strokeDasharray={dash}/>{item.tool==="Arrow"&&<polygon points={`${b.x},${b.y} ${baseX+perpX},${baseY+perpY} ${baseX-perpX},${baseY-perpY}`} fill={item.color} stroke="none"/>}{item.tool==="Distance"&&<text x={(a.x+b.x)/2} y={(a.y+b.y)/2-1} fill={item.color} stroke="none" fontSize="2.8" textAnchor="middle">{Math.round(Math.hypot((b.x-a.x)*1.05,(b.y-a.y)*.68))} m</text>}</g>
   }
 
   return <main className="app-shell">
