@@ -133,7 +133,13 @@ export default function Home(){
     e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);
     const start=pointFromPointer(e);setRouteDraft({start,current:start});
   }
-  function movePitchGesture(e:React.PointerEvent<HTMLDivElement>){if(!routeDraft||!routedActions.has(activeAction))return;setRouteDraft(draft=>draft?{...draft,current:pointFromPointer(e)}:null)}
+  function movePitchGesture(e:React.PointerEvent<HTMLDivElement>){
+    if(!routeDraft||!routedActions.has(activeAction))return;
+    // React clears currentTarget after the handler returns. Capture the point
+    // synchronously so the state updater never reads from a released event.
+    const point=pointFromPointer(e);
+    setRouteDraft(draft=>draft?{...draft,current:point}:null);
+  }
   function endPitchGesture(e:React.PointerEvent<HTMLDivElement>){
     const point=pointFromPointer(e);
     if(routedActions.has(activeAction)&&routeDraft){const distance=Math.hypot(point.x-routeDraft.start.x,point.y-routeDraft.start.y);if(distance>1.5)recordEvent(routeDraft.start.x,routeDraft.start.y,point);else notify("Hold and drag to draw the route");setRouteDraft(null);return}
