@@ -10,6 +10,8 @@ type Point = { x:number; y:number };
 type MarkerShape = "circle" | "square" | "diamond" | "triangle";
 type SetPieceType = "Free kick" | "Corner" | "Goal kick" | "Indirect" | "Penalty" | "Throw-in";
 type TacticalPlayer = { id:number; team:"own"|"opponent"; x:number; y:number };
+type IllustratorTool = "Select" | "Player ring" | "Spotlight" | "Arrow" | "Curved arrow" | "Link line" | "Distance" | "Area" | "Text";
+type Illustration = { id:number; tool:IllustratorTool; start:Point; end?:Point; color:string; fill:string; opacity:number; text?:string };
 type EventRecord = { id:number; minute:string; team:TeamCode; player:string; action:string; outcome:string; x:number; y:number; endX?:number; endY?:number; goalX?:number; goalY?:number; color?:string; marker?:MarkerShape; shotDetail?:"Woodwork"; phase?:string; setPiece?:SetPieceType };
 type MatchSession = { id:string; matchName:string; competition:string; clock:number; events:EventRecord[] };
 
@@ -37,6 +39,7 @@ const phaseOptions = ["Build-up","High press","Counter attack","Low block","Tran
 const setPieceTypes:SetPieceType[] = ["Free kick","Corner","Goal kick","Indirect","Penalty","Throw-in"];
 const markerColors = ["#10a37f","#ef6c75","#5b8def","#f4c95d","#c084fc","#f38b4a","#a7a7a7","#f3f3f3"];
 const markerShapes:MarkerShape[] = ["circle","square","diamond","triangle"];
+const illustratorTools:IllustratorTool[] = ["Select","Player ring","Spotlight","Arrow","Curved arrow","Link line","Distance","Area","Text"];
 const PANEL_LAYOUT_STORAGE_KEY = "tagx-panel-layout-v2";
 const MATCH_SESSIONS_STORAGE_KEY = "tagx-match-sessions-v2";
 const ACTIVE_SESSION_STORAGE_KEY = "tagx-active-session-v2";
@@ -125,7 +128,16 @@ export default function Home(){
   const [rosterOpen,setRosterOpen] = useState(false);
   const [importOpen,setImportOpen] = useState(false);
   const [toast,setToast] = useState("");
-  const [tool,setTool] = useState("Arrow");
+  const [tool,setTool] = useState<IllustratorTool>("Arrow");
+  const [illustrations,setIllustrations] = useState<Illustration[]>([]);
+  const [illustrationDraft,setIllustrationDraft] = useState<{start:Point;current:Point}|null>(null);
+  const [selectedIllustration,setSelectedIllustration] = useState<number|null>(null);
+  const [illustrationMove,setIllustrationMove] = useState<{id:number;pointer:Point;original:Illustration}|null>(null);
+  const [illustrationLine,setIllustrationLine] = useState("#6f95ed");
+  const [illustrationFill,setIllustrationFill] = useState("#d1e8ff");
+  const [illustrationOpacity,setIllustrationOpacity] = useState(70);
+  const [sequencePlaying,setSequencePlaying] = useState(false);
+  const [activeFrame,setActiveFrame] = useState(1);
   const [locked,setLocked] = useState(true);
   const [panels,setPanels] = useState(defaultPanels);
   const [videoUrl,setVideoUrl] = useState("");
@@ -135,9 +147,11 @@ export default function Home(){
   const boardRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const illustratorRef = useRef<HTMLDivElement>(null);
 
   const activeSession = sessions.find(session=>session.id===activeSessionId) || sessions[0];
   const {clock,events,matchName,competition} = activeSession;
+  const selectedDrawing = illustrations.find(item=>item.id===selectedIllustration);
 
   useEffect(()=>{try{const saved=window.localStorage.getItem(PANEL_LAYOUT_STORAGE_KEY);if(saved){const parsed=JSON.parse(saved) as Record<PanelKey,PanelRect>;if(parsed.video&&parsed.tagger&&parsed.pitch&&parsed.events)window.setTimeout(()=>setPanels(parsed),0)}}catch{window.localStorage.removeItem(PANEL_LAYOUT_STORAGE_KEY)}},[]);
   useEffect(()=>{try{window.localStorage.setItem(PANEL_LAYOUT_STORAGE_KEY,JSON.stringify(panels))}catch{/* Storage can be unavailable without breaking the workspace. */}},[panels]);
@@ -214,6 +228,48 @@ export default function Home(){
     const up=()=>{window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",up)};
     window.addEventListener("pointermove",move);window.addEventListener("pointerup",up,{once:true});
   }
+  function illustrationPoint(e:React.PointerEvent<HTMLDivElement>):Point{const r=e.currentTarget.getBoundingClientRect();return{x:Math.max(0,Math.min(100,(e.clientX-r.left)/r.width*100)),y:Math.max(0,Math.min(100,(e.clientY-r.top)/r.height*100))}}
+  function beginIllustration(e:React.PointerEvent<HTMLDivElement>){
+    if(e.button!==0)return;
+    const point=illustrationPoint(e);e.currentTarget.setPointerCapture(e.pointerId);
+    if(tool==="Select"){setSelectedIllustration(null);return}
+    if(tool==="Player ring"||tool==="Spotlight"||tool==="Text"){
+      const item:Illustration={id:Date.now(),tool,start:point,color:illustrationLine,fill:illustrationFill,opacity:illustrationOpacity,text:tool==="Text"?"Tactical note":undefined};
+      setIllustrations(current=>[...current,item]);setSelectedIllustration(item.id);return;
+    }
+    setIllustrationDraft({start:point,current:point});
+  }
+  function moveIllustration(e:React.PointerEvent<HTMLDivElement>){
+    const point=illustrationPoint(e);
+    if(illustrationMove){const dx=point.x-illustrationMove.pointer.x,dy=point.y-illustrationMove.pointer.y;setIllustrations(current=>current.map(item=>item.id===illustrationMove.id?{...item,start:{x:Math.max(0,Math.min(100,illustrationMove.original.start.x+dx)),y:Math.max(0,Math.min(100,illustrationMove.original.start.y+dy))},end:illustrationMove.original.end?{x:Math.max(0,Math.min(100,illustrationMove.original.end.x+dx)),y:Math.max(0,Math.min(100,illustrationMove.original.end.y+dy))}:undefined}:item));return}
+    if(illustrationDraft)setIllustrationDraft(draft=>draft?{...draft,current:point}:null);
+  }
+  function finishIllustration(e:React.PointerEvent<HTMLDivElement>){
+    if(illustrationMove){setIllustrationMove(null);return}
+    if(!illustrationDraft)return;
+    const end=illustrationPoint(e),distance=Math.hypot(end.x-illustrationDraft.start.x,end.y-illustrationDraft.start.y);
+    if(distance<1.5){setIllustrationDraft(null);notify("Drag on the canvas to draw");return}
+    const item:Illustration={id:Date.now(),tool,start:illustrationDraft.start,end,color:illustrationLine,fill:illustrationFill,opacity:illustrationOpacity};
+    setIllustrations(current=>[...current,item]);setSelectedIllustration(item.id);setIllustrationDraft(null);
+  }
+  function beginMoveIllustration(e:React.PointerEvent<SVGElement>,item:Illustration){e.stopPropagation();setSelectedIllustration(item.id);if(tool!=="Select")return;const canvas=illustratorRef.current;if(!canvas)return;const r=canvas.getBoundingClientRect(),pointer={x:(e.clientX-r.left)/r.width*100,y:(e.clientY-r.top)/r.height*100};setIllustrationMove({id:item.id,pointer,original:item})}
+  function deleteSelectedIllustration(){if(selectedIllustration===null)return;setIllustrations(current=>current.filter(item=>item.id!==selectedIllustration));setSelectedIllustration(null)}
+  function updateSelectedIllustration(patch:Partial<Pick<Illustration,"color"|"fill"|"opacity"|"text">>){if(selectedIllustration===null)return;setIllustrations(current=>current.map(item=>item.id===selectedIllustration?{...item,...patch}:item))}
+  function exportIllustration(){
+    const shapes=illustrations.map(item=>{const a=item.start,b=item.end||item.start,stroke=item.color,fill=item.fill,opacity=item.opacity/100;if(item.tool==="Player ring")return `<ellipse cx="${a.x*10}" cy="${a.y*6.2}" rx="30" ry="13" fill="none" stroke="${stroke}" stroke-width="7" opacity="${opacity}"/>`;if(item.tool==="Spotlight")return `<circle cx="${a.x*10}" cy="${a.y*6.2}" r="48" fill="${fill}" stroke="${stroke}" stroke-width="5" opacity="${opacity}"/>`;if(item.tool==="Text")return `<text x="${a.x*10}" y="${a.y*6.2}" fill="${stroke}" font-family="Arial" font-size="28" font-weight="700" opacity="${opacity}">${item.text||"Tactical note"}</text>`;if(item.tool==="Area")return `<rect x="${Math.min(a.x,b.x)*10}" y="${Math.min(a.y,b.y)*6.2}" width="${Math.abs(b.x-a.x)*10}" height="${Math.abs(b.y-a.y)*6.2}" fill="${fill}" stroke="${stroke}" stroke-width="5" opacity="${opacity}"/>`;const dash=item.tool==="Distance"?' stroke-dasharray="14 10"':'';return `<line x1="${a.x*10}" y1="${a.y*6.2}" x2="${b.x*10}" y2="${b.y*6.2}" stroke="${stroke}" stroke-width="7"${dash} marker-end="${item.tool.includes("arrow")||item.tool==="Arrow"?'url(#arrowhead)':''}" opacity="${opacity}"/>`}).join("");
+    const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="620" viewBox="0 0 1000 620"><defs><marker id="arrowhead" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="${illustrationLine}"/></marker><pattern id="stripe" width="200" height="620" patternUnits="userSpaceOnUse"><rect width="100" height="620" fill="#164b36"/><rect x="100" width="100" height="620" fill="#1b553d"/></pattern></defs><rect width="1000" height="620" fill="url(#stripe)"/><g fill="none" stroke="#e9f2ee" stroke-width="3" opacity=".85"><rect x="10" y="10" width="980" height="600"/><line x1="500" y1="10" x2="500" y2="610"/><circle cx="500" cy="310" r="78"/><rect x="10" y="130" width="160" height="360"/><rect x="830" y="130" width="160" height="360"/><rect x="10" y="220" width="60" height="180"/><rect x="930" y="220" width="60" height="180"/></g>${shapes}</svg>`;
+    const link=document.createElement("a");link.href=URL.createObjectURL(new Blob([svg],{type:"image/svg+xml"}));link.download=`tag-x-${matchName.toLowerCase().replace(/[^a-z0-9]+/g,"-")}-tactical-frame.svg`;link.click();window.setTimeout(()=>URL.revokeObjectURL(link.href),500);notify("Tactical frame exported")
+  }
+  function illustrationSvg(item:Illustration){
+    const a=item.start,b=item.end||item.start,selected=item.id===selectedIllustration,common={stroke:item.color,opacity:item.opacity/100,onPointerDown:(e:React.PointerEvent<SVGElement>)=>beginMoveIllustration(e,item)};
+    if(item.tool==="Player ring")return <ellipse {...common} cx={a.x} cy={a.y} rx="4" ry="2.1" fill="none" strokeWidth={selected?1.1:.7}/>;
+    if(item.tool==="Spotlight")return <circle {...common} cx={a.x} cy={a.y} r="6" fill={item.fill} strokeWidth={selected?1.1:.6}/>;
+    if(item.tool==="Text")return <text {...common} x={a.x} y={a.y} fill={item.color} stroke="none" fontSize="3.2" fontWeight="700">{item.text}</text>;
+    if(item.tool==="Area")return <rect {...common} x={Math.min(a.x,b.x)} y={Math.min(a.y,b.y)} width={Math.abs(b.x-a.x)} height={Math.abs(b.y-a.y)} fill={item.fill} strokeWidth={selected?1.1:.6}/>;
+    if(item.tool==="Curved arrow"){const cx=(a.x+b.x)/2,cy=Math.min(a.y,b.y)-Math.abs(b.x-a.x)*.18;return <path {...common} d={`M ${a.x} ${a.y} Q ${cx} ${cy} ${b.x} ${b.y}`} fill="none" strokeWidth={selected?1.2:.8} markerEnd="url(#illustrator-head)"/>}
+    const marker=item.tool==="Arrow"?"url(#illustrator-head)":undefined,dash=item.tool==="Distance"?"2 1":undefined;
+    return <g {...common}><line x1={a.x} y1={a.y} x2={b.x} y2={b.y} strokeWidth={selected?1.2:.8} strokeDasharray={dash} markerEnd={marker}/>{item.tool==="Distance"&&<text x={(a.x+b.x)/2} y={(a.y+b.y)/2-1} fill={item.color} stroke="none" fontSize="2.8" textAnchor="middle">{Math.round(Math.hypot((b.x-a.x)*1.05,(b.y-a.y)*.68))} m</text>}</g>
+  }
 
   return <main className="app-shell">
     <header className="global-bar">
@@ -261,8 +317,8 @@ export default function Home(){
             <div className="event-list">{events.slice(0,8).map(event=><div className={`event-entry ${editingEventId===event.id?"editing":""}`} key={event.id}><button onClick={()=>{setClock(Number(event.minute.split(":")[0])*60+Number(event.minute.split(":")[1]));setEditingEventId(current=>current===event.id?null:event.id)}}><time>{event.minute}</time><i style={{backgroundColor:event.color}}>{event.action[0]}</i><span><b>{event.action}</b><small>{event.player} · {event.outcome}{event.shotDetail?` · ${event.shotDetail}`:""}{event.setPiece?` · ${event.setPiece}`:""}{routeDistance(event)!==null?` · ${routeDistance(event)} m`:""}</small></span><strong>{editingEventId===event.id?"×":"›"}</strong></button>{editingEventId===event.id&&<div className="event-style-editor"><small>MAP MARKER</small><div className="color-options">{markerColors.map(color=><button key={color} aria-label={`Change event color to ${color}`} className={event.color===color?"selected":""} style={{backgroundColor:color}} onClick={()=>updateEventStyle(event.id,{color,marker:event.marker||"circle"})}/>)}</div><div className="shape-options">{markerShapes.map(shape=><button key={shape} aria-label={`Change event shape to ${shape}`} className={event.marker===shape?"selected":""} onClick={()=>updateEventStyle(event.id,{color:event.color||markerColors[0],marker:shape})}><i className={`marker-sample ${shape}`}/></button>)}</div></div>}</div>)}</div>
           </PanelWindow>
         </div> : <div className="illustrator-layout">
-          <section className="fm-panel canvas-panel"><header><div><span>TACTICAL CANVAS</span><h1>Counter-press after loss</h1></div><button className="fm-primary" onClick={()=>notify("Render queued")}>EXPORT TACTICAL VIDEO »</button></header><div className="illustrator-canvas"><div className="video-grid"><MiniPitch/></div><div className="draw-ring one"/><div className="draw-ring two"/><div className="draw-zone"/><div className="draw-arrow a1">➜</div><div className="draw-arrow a2">➜</div></div><footer><button>▶ PLAY SEQUENCE</button><div><span/></div><b>00:08.0</b></footer></section>
-          <section className="fm-panel tool-panel"><header><div><span>CUSTOMIZE TOOL</span><h1>Annotate the play</h1></div></header><div className="tool-grid">{["Select","Player ring","Spotlight","Arrow","Curved arrow","Link line","Distance","Area","Text"].map(t=><button key={t} className={tool===t?"selected":""} onClick={()=>setTool(t)}><i>{t==="Arrow"?"↗":t==="Text"?"T":"○"}</i>{t}</button>)}</div><div className="style-row"><label>LINE <input type="color" defaultValue="#5784e6"/></label><label>FILL <input type="color" defaultValue="#d1e8ff"/></label><label>OPACITY <input type="range" defaultValue="70"/></label></div><div className="frames"><span>SEQUENCE & TIMELINE</span>{["41:52.0","41:54.2","41:57.8"].map((t,i)=><button key={t} className={i===1?"selected":""}><b>{i+1}</b><span>{t}<small>{i===1?"Current frame":"Match clip"}</small></span><strong>⋮</strong></button>)}</div></section>
+          <section className="fm-panel canvas-panel"><header><div><span>TACTICAL CANVAS</span><h1>{matchName}</h1></div><div className="illustrator-actions"><button onClick={()=>{setIllustrations(current=>current.slice(0,-1));setSelectedIllustration(null)}} disabled={!illustrations.length}>UNDO</button><button onClick={deleteSelectedIllustration} disabled={selectedIllustration===null}>DELETE</button><button className="fm-primary" onClick={exportIllustration} disabled={!illustrations.length}>EXPORT FRAME »</button></div></header><div ref={illustratorRef} className={`illustrator-canvas tool-${tool.toLowerCase().replaceAll(" ","-")}`} onPointerDown={beginIllustration} onPointerMove={moveIllustration} onPointerUp={finishIllustration} onPointerCancel={()=>{setIllustrationDraft(null);setIllustrationMove(null)}}>{videoUrl?<video className="illustrator-video" src={videoUrl} muted playsInline/>:<div className="video-grid"><MiniPitch/></div>}<svg className="illustration-layer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Tactical drawing canvas"><defs><marker id="illustrator-head" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 Z" fill="context-stroke"/></marker></defs>{illustrations.map(item=><g key={item.id} className={item.id===selectedIllustration?"selected-illustration":""}>{illustrationSvg(item)}</g>)}{illustrationDraft&&illustrationSvg({id:-1,tool,start:illustrationDraft.start,end:illustrationDraft.current,color:illustrationLine,fill:illustrationFill,opacity:illustrationOpacity})}</svg>{!illustrations.length&&!illustrationDraft&&<div className="canvas-empty"><b>{tool==="Player ring"||tool==="Spotlight"||tool==="Text"?"Click to place":"Press, drag and release to draw"}</b><small>Select a tool on the right. Every annotation remains editable.</small></div>}</div><footer><button className={sequencePlaying?"playing":""} onClick={()=>{setSequencePlaying(true);window.setTimeout(()=>setSequencePlaying(false),8000)}}>{sequencePlaying?"Ⅱ PLAYING":"▶ PLAY SEQUENCE"}</button><div><span className={sequencePlaying?"sequence-progress playing":"sequence-progress"}/></div><b>00:08.0</b></footer></section>
+          <section className="fm-panel tool-panel"><header><div><span>CUSTOMIZE TOOL</span><h1>Annotate the play</h1></div><button className="clear-drawings" onClick={()=>{setIllustrations([]);setSelectedIllustration(null)}} disabled={!illustrations.length}>CLEAR</button></header><div className="tool-grid">{illustratorTools.map(t=><button key={t} className={tool===t?"selected":""} onClick={()=>setTool(t)}><i>{t==="Arrow"?"↗":t==="Curved arrow"?"⤴":t==="Link line"?"╱":t==="Distance"?"↔":t==="Area"?"▱":t==="Text"?"T":t==="Select"?"↖":"○"}</i>{t}</button>)}</div><div className="style-row"><label>LINE <input type="color" value={selectedDrawing?.color||illustrationLine} onChange={e=>{setIllustrationLine(e.target.value);updateSelectedIllustration({color:e.target.value})}}/></label><label>FILL <input type="color" value={selectedDrawing?.fill||illustrationFill} onChange={e=>{setIllustrationFill(e.target.value);updateSelectedIllustration({fill:e.target.value})}}/></label><label>OPACITY <input type="range" min="10" max="100" value={selectedDrawing?.opacity||illustrationOpacity} onChange={e=>{const value=Number(e.target.value);setIllustrationOpacity(value);updateSelectedIllustration({opacity:value})}}/></label>{selectedDrawing?.tool==="Text"&&<label>TEXT <input className="illustrator-text-input" value={selectedDrawing.text||""} onChange={e=>updateSelectedIllustration({text:e.target.value})}/></label>}</div><div className="illustrator-help"><b>{tool}</b><span>{tool==="Select"?"Click an annotation to select it. Drag it to move; use Delete to remove it.":tool==="Player ring"||tool==="Spotlight"||tool==="Text"?"Click the canvas to place it.":"Press on the origin, drag the path and release to finish."}</span></div><div className="frames"><span>SEQUENCE & TIMELINE</span>{["41:52.0","41:54.2","41:57.8"].map((t,i)=><button key={t} className={activeFrame===i?"selected":""} onClick={()=>setActiveFrame(i)}><b>{i+1}</b><span>{t}<small>{i===1?"Current frame":"Match clip"}</small></span><strong>›</strong></button>)}</div></section>
         </div>}
       </section>
     </div>
