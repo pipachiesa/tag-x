@@ -252,7 +252,7 @@ export default function Home(){
     const item:Illustration={id:Date.now(),tool,start:illustrationDraft.start,end,color:illustrationLine,fill:illustrationFill,opacity:illustrationOpacity};
     setIllustrations(current=>[...current,item]);setSelectedIllustration(item.id);setIllustrationDraft(null);
   }
-  function beginMoveIllustration(e:React.PointerEvent<SVGElement>,item:Illustration){e.stopPropagation();setSelectedIllustration(item.id);if(tool!=="Select")return;const canvas=illustratorRef.current;if(!canvas)return;const r=canvas.getBoundingClientRect(),pointer={x:(e.clientX-r.left)/r.width*100,y:(e.clientY-r.top)/r.height*100};setIllustrationMove({id:item.id,pointer,original:item})}
+  function beginMoveIllustration(e:React.PointerEvent<SVGElement>,item:Illustration){e.stopPropagation();setSelectedIllustration(item.id);if(tool!=="Select")return;e.currentTarget.setPointerCapture(e.pointerId);const canvas=illustratorRef.current;if(!canvas)return;const r=canvas.getBoundingClientRect(),pointer={x:(e.clientX-r.left)/r.width*100,y:(e.clientY-r.top)/r.height*100};setIllustrationMove({id:item.id,pointer,original:item})}
   function deleteSelectedIllustration(){if(selectedIllustration===null)return;setIllustrations(current=>current.filter(item=>item.id!==selectedIllustration));setSelectedIllustration(null)}
   function updateSelectedIllustration(patch:Partial<Pick<Illustration,"color"|"fill"|"opacity"|"text">>){if(selectedIllustration===null)return;setIllustrations(current=>current.map(item=>item.id===selectedIllustration?{...item,...patch}:item))}
   function exportIllustration(){
@@ -261,7 +261,7 @@ export default function Home(){
     const link=document.createElement("a");link.href=URL.createObjectURL(new Blob([svg],{type:"image/svg+xml"}));link.download=`tag-x-${matchName.toLowerCase().replace(/[^a-z0-9]+/g,"-")}-tactical-frame.svg`;link.click();window.setTimeout(()=>URL.revokeObjectURL(link.href),500);notify("Tactical frame exported")
   }
   function illustrationSvg(item:Illustration){
-    const a=item.start,b=item.end||item.start,selected=item.id===selectedIllustration,common={stroke:item.color,opacity:item.opacity/100,onPointerDown:(e:React.PointerEvent<SVGElement>)=>beginMoveIllustration(e,item)};
+    const a=item.start,b=item.end||item.start,selected=item.id===selectedIllustration,common={stroke:item.color,opacity:item.opacity/100,onPointerDown:(e:React.PointerEvent<SVGElement>)=>beginMoveIllustration(e,item),style:{cursor:tool==="Select"?"move":"pointer",pointerEvents:"all" as const}};
     if(item.tool==="Player ring")return <ellipse {...common} cx={a.x} cy={a.y} rx="4" ry="2.1" fill="none" strokeWidth={selected?1.1:.7}/>;
     if(item.tool==="Spotlight")return <circle {...common} cx={a.x} cy={a.y} r="6" fill={item.fill} strokeWidth={selected?1.1:.6}/>;
     if(item.tool==="Text")return <text {...common} x={a.x} y={a.y} fill={item.color} stroke="none" fontSize="3.2" fontWeight="700">{item.text}</text>;
