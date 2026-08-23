@@ -362,7 +362,7 @@ export default function Home(){
     return <g {...common}><line x1={a.x} y1={a.y} x2={b.x} y2={b.y} strokeWidth={(selected?1.2:.8)*scale} strokeDasharray={dash}/>{item.tool==="Arrow"&&<polygon points={`${b.x},${b.y} ${baseX+perpX*scale},${baseY+perpY*scale} ${baseX-perpX*scale},${baseY-perpY*scale}`} fill={item.color} stroke="none"/>}{item.tool==="Distance"&&<text x={(a.x+b.x)/2} y={(a.y+b.y)/2-1} fill={item.color} stroke="none" fontSize={2.8*scale} textAnchor="middle">{Math.round(Math.hypot((b.x-a.x)*1.05,(b.y-a.y)*.68))} m</text>}</g>
   }
 
-  return <main className="app-shell">
+  return <main className={`app-shell ${view==="illustrator"?"illustrator-mode":""}`}>
     <header className="global-bar">
       <div className="history-buttons"><button aria-label="Back">‹</button><button aria-label="Forward">›</button></div>
       <div className="brand"><Mark/><div><b>TAG X</b><small>VIDEO INTELLIGENCE</small></div></div>
@@ -409,6 +409,11 @@ export default function Home(){
           </PanelWindow>
         </div> : <div className="illustrator-studio">
           <header className="studio-toolbar" aria-label="Illustrator tools">
+            <div className="studio-home">
+              <button title="Back to match tagging" aria-label="Back to match tagging" onClick={()=>setView("tagging")}>←</button>
+              <span className="studio-mark">T<small>X</small></span>
+              <div><b>TAG X</b><small>{matchName}</small></div>
+            </div>
             <div className="studio-toolset">
               {illustratorTools.map(t=><button key={t} title={t} aria-label={t} className={tool===t?"selected":""} onClick={()=>{setTool(t);if(t!=="Area")setPolygonDraft([])}}><i>{illustratorToolGlyphs[t]}</i><span>{t}</span></button>)}
             </div>

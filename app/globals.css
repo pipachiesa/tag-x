@@ -100,3 +100,77 @@ html,body{background:#171717;font-family:Inter,ui-sans-serif,-apple-system,Blink
 @media(max-width:1200px){.illustrator-studio{grid-template-columns:48px minmax(520px,1fr) 285px}.studio-toolset button{min-width:45px}.studio-toolset button span{display:none}.studio-style-controls .studio-range{display:none}.studio-history .studio-export{min-width:86px;font-size:6px}}
 @media(max-width:900px){.illustrator-studio{grid-template-areas:"toolbar toolbar" "stage library";grid-template-columns:minmax(470px,1fr) 270px;grid-template-rows:52px minmax(560px,calc(100vh - 152px));overflow:auto}.studio-quick-rail{display:none}.studio-style-controls label>span{display:none}.studio-library{min-height:560px}}
 @media(max-width:720px){.illustrator-studio{grid-template-areas:"toolbar" "stage" "library";grid-template-columns:1fr;grid-template-rows:52px minmax(490px,70vh) 540px;overflow:auto}.studio-toolbar{position:sticky;top:0}.studio-style-controls{display:none}.studio-history{margin-left:auto}.studio-history>button:not(.studio-export){display:none}.studio-stage{min-width:560px}.studio-library{min-height:540px;border-left:0;border-top:1px solid #3a3a3a}.studio-speeds button:not(.selected){display:none}}
+
+/* Immersive professional illustrator — video first, chrome second. */
+.illustrator-mode{overflow:hidden;background:#101211}
+.illustrator-mode>.global-bar,.illustrator-mode .module-rail,.illustrator-mode .section-tabs{display:none}
+.illustrator-mode .product-shell{display:block;min-height:100vh}
+.illustrator-mode .main-area{width:100vw;height:100vh;overflow:hidden}
+.illustrator-mode .illustrator-studio{position:fixed;inset:0;z-index:100;min-height:100vh;width:100vw;grid-template-areas:"toolbar toolbar toolbar" "rail stage library";grid-template-columns:50px minmax(0,1fr) clamp(300px,22vw,390px);grid-template-rows:58px minmax(0,1fr);background:#070908;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.illustrator-mode .studio-toolbar{height:58px;background:#252827;border-color:#3a3d3b;box-shadow:none;align-items:stretch}
+.studio-home{display:flex;align-items:center;flex:0 0 auto;height:58px;border-right:1px solid #3d403e;background:#202321}
+.studio-home>button{width:48px;height:58px;border:0;border-right:1px solid #393c3a;background:transparent;color:#d9ddda;font-size:24px}
+.studio-home>button:hover{background:#303432;color:#28d69f}
+.studio-mark{position:relative;width:34px;height:34px;margin:0 9px 0 11px;border-radius:7px;background:#f1f3f2;color:#151816;display:grid;place-items:center;font-size:15px;font-weight:900}
+.studio-mark small{position:absolute;right:5px;bottom:3px;font-size:6px}
+.studio-home>div{display:grid;min-width:120px;padding-right:16px}
+.studio-home b{font-size:11px;letter-spacing:.12em}.studio-home div small{max-width:145px;color:#8d938f;font-size:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.illustrator-mode .studio-toolset{height:58px;padding:0 5px;background:#282b29}
+.illustrator-mode .studio-toolset button{position:relative;min-width:46px;height:58px;border-right:0;color:#bec3c0}
+.illustrator-mode .studio-toolset button i{font-size:21px;font-weight:300;color:#d8dcda}
+.illustrator-mode .studio-toolset button span{display:none}
+.illustrator-mode .studio-toolset button:hover{background:#343836}
+.illustrator-mode .studio-toolset button.selected{background:#087e59;box-shadow:none;color:#fff}
+.illustrator-mode .studio-toolset button.selected i{color:#fff}
+.illustrator-mode .studio-toolset button.selected::after{content:"";position:absolute;left:9px;right:9px;bottom:0;height:2px;background:#43efb4}
+.illustrator-mode .studio-style-controls{height:58px;margin-left:auto;padding:0 8px;gap:7px;border-left:1px solid #3b3e3c;background:#232624}
+.illustrator-mode .studio-style-controls label{width:38px;height:42px;align-content:center;color:#858b87}
+.illustrator-mode .studio-style-controls label>span{display:none}
+.illustrator-mode .studio-style-controls input[type=color]{width:28px;height:28px;padding:0;border:2px solid #747a76;border-radius:50%;overflow:hidden}
+.illustrator-mode .studio-style-controls .studio-range{width:68px}
+.illustrator-mode .studio-style-controls input[type=range]{width:64px;accent-color:#13cf91}
+.illustrator-mode .studio-history{height:58px;background:#232624;border-left:1px solid #3b3e3c}
+.illustrator-mode .studio-history>button{min-width:45px;height:58px;border-right:0;color:#d4d8d5}
+.illustrator-mode .studio-history>button:hover{background:#343735;color:#32dfa6}
+.illustrator-mode .studio-history .studio-export{min-width:118px;margin:8px;height:42px;border-radius:4px;background:#0ca674;color:#041b13;font-size:7px}
+.illustrator-mode .studio-history .studio-export:hover{background:#18cc91}
+.illustrator-mode .studio-quick-rail{background:#202321;border-color:#3b3e3c;padding-top:5px}
+.illustrator-mode .studio-quick-rail button{position:relative;height:49px;border-bottom:0;color:#c0c5c2;font-size:19px}
+.illustrator-mode .studio-quick-rail button:hover{background:#303431;color:#2fe0a6}
+.illustrator-mode .studio-quick-rail button.selected{background:#2d332f;color:#2fe0a6;box-shadow:inset 3px 0 #18d499}
+.illustrator-mode .studio-quick-rail button.selected::after{content:"";position:absolute;right:4px;top:50%;width:4px;height:4px;border-radius:50%;background:#2fe0a6}
+.illustrator-mode .studio-stage{grid-template-rows:minmax(0,1fr) 58px;background:#050605}
+.illustrator-mode .stage-title{position:absolute;z-index:8;left:66px;top:72px;height:auto;padding:8px 10px;border:1px solid #ffffff24;border-radius:4px;background:#141714d9;backdrop-filter:blur(6px);pointer-events:none}
+.illustrator-mode .stage-title b{font-size:9px}.illustrator-mode .stage-title small{font-size:6px}.illustrator-mode .stage-title button{pointer-events:auto;margin-left:14px}
+.illustrator-mode .studio-canvas{grid-row:1;background:#000;display:grid;place-items:center}
+.illustrator-mode .studio-canvas .illustrator-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+.illustrator-mode .studio-canvas>.video-grid{inset:7% 3%;background:#090c0a;opacity:.88}
+.illustrator-mode .studio-canvas>.video-grid .mini-pitch{opacity:.32}
+.illustrator-mode .studio-canvas .canvas-empty{padding:13px 18px;border-color:#3b413d;border-radius:4px;background:#151815e6}
+.illustrator-mode .selection-badge{border-color:#18d499;background:#14251f}.illustrator-mode .selection-badge button{border-color:#315f4f;color:#caffed}.illustrator-mode .selection-badge button:last-child{color:#ff8d8d}
+.illustrator-mode .studio-transport{height:58px;padding:0 15px;border-color:#3b3e3c;background:#242725}
+.illustrator-mode .studio-transport>button{border:0;background:transparent;color:#d2d7d3;font-size:11px}
+.illustrator-mode .studio-transport>button:hover{color:#2fe0a6}
+.illustrator-mode .studio-transport .studio-play{width:38px;border:0;background:transparent;color:#eee;font-size:17px}
+.illustrator-mode .studio-scrub{height:3px;background:#565b57}.illustrator-mode .studio-scrub span{background:#18d499}
+.illustrator-mode .studio-transport>b{font-size:8px}.illustrator-mode .studio-speeds{border-left:1px solid #454946;padding-left:8px}
+.illustrator-mode .studio-speeds button{border:0;background:transparent;color:#8e948f}.illustrator-mode .studio-speeds button.selected{border:1px solid #18d499;background:#143a2e;color:#86f0cb}
+.illustrator-mode .studio-library{grid-template-rows:58px auto minmax(0,1fr) auto;border-color:#3b3e3c;background:#1b1e1c}
+.illustrator-mode .studio-library-tabs{height:58px;border-color:#3c403d}
+.illustrator-mode .studio-library-tabs button{border-color:#3c403d;background:#242725;color:#9ca29e;font-size:8px}
+.illustrator-mode .studio-library-tabs button.selected{background:#292d2a;color:#fff;box-shadow:inset 0 -3px #18d499}
+.illustrator-mode .studio-event-filter{padding:9px 12px;border-color:#343835;background:#1d201e}
+.illustrator-mode .studio-event-filter span{color:#cfd5d1;font-size:7px}.illustrator-mode .studio-event-filter small{font-size:6px}
+.illustrator-mode .studio-event-list{padding:0 11px;background:#1c1f1d}
+.illustrator-mode .studio-event-list>button{min-height:48px;border-color:#343835;padding:5px 4px}
+.illustrator-mode .studio-event-list>button:hover,.illustrator-mode .studio-event-list>button.selected{background:#292f2b}
+.illustrator-mode .studio-event-list>button i{border-radius:4px}
+.illustrator-mode .studio-event-list>button em{color:#20cc92}
+.illustrator-mode .studio-clip-maker{padding:9px 11px;border-color:#3b3f3c;background:#242725}
+.illustrator-mode .studio-clip-maker input,.illustrator-mode .studio-new-playlist input{border-radius:3px;background:#151816}
+.illustrator-mode .studio-clip-maker>button{border-radius:3px;background:#12b982}
+.illustrator-mode .studio-new-playlist{border-color:#393d3a;background:#202321}
+.illustrator-mode .studio-new-playlist button{border-radius:3px;border-color:#18d499;background:#133b2e}
+.illustrator-mode .studio-playlist-list section,.illustrator-mode .studio-clip-library article{border-radius:3px;background:#222623}
+@media(max-width:1050px){.illustrator-mode .illustrator-studio{grid-template-columns:46px minmax(0,1fr) 285px}.studio-home>div{display:none}.studio-home{width:105px}.illustrator-mode .studio-toolset button{min-width:40px}.illustrator-mode .studio-style-controls .studio-range{display:none}.illustrator-mode .studio-history .studio-export{min-width:92px}}
+@media(max-width:760px){.illustrator-mode{overflow:auto}.illustrator-mode .main-area{overflow:auto}.illustrator-mode .illustrator-studio{position:relative;min-width:700px;grid-template-columns:44px minmax(430px,1fr) 250px;grid-template-rows:54px minmax(520px,calc(100vh - 54px))}.illustrator-mode .studio-toolbar,.illustrator-mode .studio-home,.illustrator-mode .studio-history{height:54px}.illustrator-mode .studio-style-controls{display:none}.illustrator-mode .studio-history>button:not(.studio-export){display:none}}
