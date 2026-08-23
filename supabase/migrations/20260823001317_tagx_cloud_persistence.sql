@@ -81,3 +81,10 @@ revoke all on public.tagx_profiles from anon, authenticated;
 revoke all on public.tagx_workspaces from anon, authenticated;
 revoke all on public.tagx_teams from anon, authenticated;
 revoke all on public.tagx_players from anon, authenticated;
+
+-- Supabase's service role does not automatically regain privileges revoked from
+-- the client roles on every project, so grant the server API its explicit access.
+grant select, insert, update, delete on public.tagx_profiles to service_role;
+grant select, insert, update, delete on public.tagx_workspaces to service_role;
+grant select, insert, update, delete on public.tagx_teams to service_role;
+grant select, insert, update, delete on public.tagx_players to service_role;
