@@ -17,7 +17,8 @@ function databaseHeaders(key: string, extra: HeadersInit = {}): HeadersInit {
 
 async function authenticatedUser(): Promise<ChatGPTUser | null> {
   const user = await getChatGPTUser();
-  if (user) return user;
+  if (user && /@(gmail|googlemail)\.com$/i.test(user.email)) return user;
+  if (user) return null;
   if (process.env.NODE_ENV !== "production") return { userId: "tagx-local-developer", email: "local@tagx.dev", displayName: "Local analyst", fullName: "Local analyst" };
   return null;
 }

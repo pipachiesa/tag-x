@@ -23,18 +23,16 @@ async function render(path = "/") {
   );
 }
 
-test("server-renders the Tag X workspace", async () => {
+test("server-renders the authenticated Tag X entry point", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
   assert.match(html, /<title>Tag X — Football video intelligence<\/title>/i);
-  assert.match(html, /MATCH VIDEO/);
-  assert.match(html, /EVENT LOCATION/);
-  assert.match(html, /QUICK TAG/);
-  assert.match(html, /Illustrator/);
-  assert.match(html, /Match sessions/i);
+  assert.match(html, /Continue with Google/);
+  assert.match(html, /Gmail accounts only/);
+  assert.match(html, /Football video intelligence/);
 });
 
 test("keeps Supabase credentials on the server and protects database tables", async () => {
