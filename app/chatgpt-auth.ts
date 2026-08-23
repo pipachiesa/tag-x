@@ -23,18 +23,6 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
   const userId = requestHeaders.get(USER_ID_HEADER);
   const email = requestHeaders.get(USER_EMAIL_HEADER);
   if (!userId || !email) {
-    const hostname = (requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "")
-      .split(":")[0]
-      .toLowerCase();
-    const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
-    if (process.env.TAGX_HOSTED !== "1" && isLocalHost) {
-      return {
-        userId: "local-tagx-tester",
-        displayName: "Local tester",
-        email: "local.tester@gmail.com",
-        fullName: "Local tester",
-      };
-    }
     return null;
   }
 
