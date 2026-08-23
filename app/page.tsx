@@ -11,7 +11,7 @@ type MarkerShape = "circle" | "square" | "diamond" | "triangle";
 type SetPieceType = "Free kick" | "Corner" | "Goal kick" | "Indirect" | "Penalty" | "Throw-in";
 type TacticalPlayer = { id:number; team:"own"|"opponent"; x:number; y:number };
 type IllustratorTool = "Select" | "Player ring" | "Spotlight" | "Arrow" | "Curved arrow" | "Link line" | "Distance" | "Area" | "Text";
-type Illustration = { id:number; tool:IllustratorTool; start:Point; end?:Point; points?:Point[]; color:string; fill:string; opacity:number; size:number; text?:string };
+type Illustration = { id:number; tool:IllustratorTool; start:Point; end?:Point; points?:Point[]; color:string; fill:string; opacity:number; size:number; text?:string; time?:number };
 type EventRecord = { id:number; minute:string; team:TeamCode; player:string; action:string; outcome:string; x:number; y:number; endX?:number; endY?:number; goalX?:number; goalY?:number; color?:string; marker?:MarkerShape; shotDetail?:"Woodwork"; phase?:string; setPiece?:SetPieceType };
 type MatchSession = { id:string; matchName:string; competition:string; clock:number; events:EventRecord[] };
 type ClipRecord = { id:number; sessionId:string; eventId:number; title:string; start:number; end:number; playlistIds:number[] };
@@ -153,9 +153,9 @@ export default function Home(){
   const [polygonDraft,setPolygonDraft] = useState<Point[]>([]);
   const [selectedIllustration,setSelectedIllustration] = useState<number|null>(null);
   const [illustrationMove,setIllustrationMove] = useState<{id:number;pointer:Point;original:Illustration}|null>(null);
-  const [illustrationLine,setIllustrationLine] = useState("#6f95ed");
-  const [illustrationFill,setIllustrationFill] = useState("#d1e8ff");
-  const [illustrationOpacity,setIllustrationOpacity] = useState(70);
+  const [illustrationLine,setIllustrationLine] = useState("#ff3038");
+  const [illustrationFill,setIllustrationFill] = useState("#12c98b");
+  const [illustrationOpacity,setIllustrationOpacity] = useState(88);
   const [illustrationSize,setIllustrationSize] = useState(100);
   const [selectedEventId,setSelectedEventId] = useState<number|null>(seededEvents[0]?.id||null);
   const [clipPreRoll,setClipPreRoll] = useState(5);
@@ -283,18 +283,25 @@ export default function Home(){
     window.addEventListener("pointermove",move);window.addEventListener("pointerup",up,{once:true});
   }
   function illustrationPoint(e:React.PointerEvent<HTMLDivElement>):Point{const r=e.currentTarget.getBoundingClientRect();return{x:Math.max(0,Math.min(100,(e.clientX-r.left)/r.width*100)),y:Math.max(0,Math.min(100,(e.clientY-r.top)/r.height*100))}}
+  function illustrationTime(){return videoRef.current?.currentTime??clock}
+  function illustrationPaint(activeTool:Tool){
+    if(activeTool==="Spotlight")return{color:"#ffd400",fill:"#ffd400"};
+    if(activeTool==="Area")return{color:"#ff3038",fill:"#10b981"};
+    if(activeTool==="Player ring"||activeTool==="Arrow"||activeTool==="Curved arrow"||activeTool==="Link line")return{color:"#ff3038",fill:illustrationFill};
+    return{color:illustrationLine,fill:illustrationFill};
+  }
   function beginIllustration(e:React.PointerEvent<HTMLDivElement>){
     if(e.button!==0)return;
     const point=illustrationPoint(e);
     if(tool==="Select"){setSelectedIllustration(null);return}
     if(tool==="Area"){
       const next=[...polygonDraft,point];
-      if(next.length===4){const item:Illustration={id:Date.now(),tool,start:next[0],points:next,color:illustrationLine,fill:illustrationFill,opacity:illustrationOpacity,size:illustrationSize};setIllustrations(current=>[...current,item]);setSelectedIllustration(item.id);setPolygonDraft([]);setTool("Select");notify("Area created · select it to resize or remove")}else setPolygonDraft(next);
+      if(next.length===4){const paint=illustrationPaint(tool),item:Illustration={id:Date.now(),tool,start:next[0],points:next,color:paint.color,fill:paint.fill,opacity:illustrationOpacity,size:illustrationSize,time:illustrationTime()};setIllustrations(current=>[...current,item]);setSelectedIllustration(item.id);setPolygonDraft([]);setTool("Select");notify("Area created · select it to resize or remove")}else setPolygonDraft(next);
       return;
     }
     e.currentTarget.setPointerCapture(e.pointerId);
     if(tool==="Player ring"||tool==="Spotlight"||tool==="Text"){
-      const item:Illustration={id:Date.now(),tool,start:point,color:illustrationLine,fill:illustrationFill,opacity:illustrationOpacity,size:illustrationSize,text:tool==="Text"?"Tactical note":undefined};
+      const paint=illustrationPaint(tool),item:Illustration={id:Date.now(),tool,start:point,color:paint.color,fill:paint.fill,opacity:illustrationOpacity,size:illustrationSize,text:tool==="Text"?"Tactical note":undefined,time:illustrationTime()};
       setIllustrations(current=>[...current,item]);setSelectedIllustration(item.id);return;
     }
     setIllustrationDraft({start:point,current:point});
@@ -309,10 +316,10 @@ export default function Home(){
     if(!illustrationDraft)return;
     const end=illustrationPoint(e),distance=Math.hypot(end.x-illustrationDraft.start.x,end.y-illustrationDraft.start.y);
     if(distance<1.5){setIllustrationDraft(null);notify("Drag on the canvas to draw");return}
-    const item:Illustration={id:Date.now(),tool,start:illustrationDraft.start,end,color:illustrationLine,fill:illustrationFill,opacity:illustrationOpacity,size:illustrationSize};
+    const paint=illustrationPaint(tool),item:Illustration={id:Date.now(),tool,start:illustrationDraft.start,end,color:paint.color,fill:paint.fill,opacity:illustrationOpacity,size:illustrationSize,time:illustrationTime()};
     setIllustrations(current=>[...current,item]);setSelectedIllustration(item.id);setIllustrationDraft(null);
   }
-  function finishPolygon(){if(polygonDraft.length<3){notify("Add at least 3 vertices");return}const item:Illustration={id:Date.now(),tool:"Area",start:polygonDraft[0],points:polygonDraft,color:illustrationLine,fill:illustrationFill,opacity:illustrationOpacity,size:illustrationSize};setIllustrations(current=>[...current,item]);setSelectedIllustration(item.id);setPolygonDraft([]);setTool("Select");notify("Area created")}
+  function finishPolygon(){if(polygonDraft.length<3){notify("Add at least 3 vertices");return}const paint=illustrationPaint("Area"),item:Illustration={id:Date.now(),tool:"Area",start:polygonDraft[0],points:polygonDraft,color:paint.color,fill:paint.fill,opacity:illustrationOpacity,size:illustrationSize,time:illustrationTime()};setIllustrations(current=>[...current,item]);setSelectedIllustration(item.id);setPolygonDraft([]);setTool("Select");notify("Area created")}
   function beginMoveIllustration(e:React.PointerEvent<SVGElement>,item:Illustration){e.stopPropagation();setSelectedIllustration(item.id);if(tool!=="Select")return;e.currentTarget.setPointerCapture(e.pointerId);const canvas=illustratorRef.current;if(!canvas)return;const r=canvas.getBoundingClientRect(),pointer={x:(e.clientX-r.left)/r.width*100,y:(e.clientY-r.top)/r.height*100};setIllustrationMove({id:item.id,pointer,original:item})}
   function deleteSelectedIllustration(){if(selectedIllustration===null)return;setIllustrations(current=>current.filter(item=>item.id!==selectedIllustration));setSelectedIllustration(null)}
   function updateSelectedIllustration(patch:Partial<Pick<Illustration,"color"|"fill"|"opacity"|"size"|"text">>){if(selectedIllustration===null)return;setIllustrations(current=>current.map(item=>item.id===selectedIllustration?{...item,...patch}:item))}
@@ -321,7 +328,35 @@ export default function Home(){
   function createClip(){const event=events.find(item=>item.id===selectedEventId);if(!event){notify("Select an event first");return}const video=videoRef.current,limit=video&&Number.isFinite(video.duration)?video.duration:eventSeconds(event)+clipPostRoll,time=Math.min(eventSeconds(event),limit);const clip:ClipRecord={id:Date.now(),sessionId:activeSessionId,eventId:event.id,title:`${event.action} · ${event.minute}`,start:Math.max(0,time-clipPreRoll),end:Math.min(limit,time+clipPostRoll),playlistIds:[]};setClips(current=>[clip,...current]);notify("Clip created")}
   function createPlaylist(){const name=newPlaylistName.trim();if(!name)return;setPlaylists(current=>[...current,{id:Date.now(),name}]);setNewPlaylistName("");notify("Playlist created")}
   function toggleClipPlaylist(clipId:number,playlistId:number){setClips(current=>current.map(clip=>clip.id===clipId?{...clip,playlistIds:clip.playlistIds.includes(playlistId)?clip.playlistIds.filter(id=>id!==playlistId):[...clip.playlistIds,playlistId]}:clip))}
-  function drawAnnotation(ctx:CanvasRenderingContext2D,item:Illustration,width:number,height:number){const sx=width/100,sy=height/100,a={x:item.start.x*sx,y:item.start.y*sy},b={x:(item.end||item.start).x*sx,y:(item.end||item.start).y*sy},scale=item.size/100;ctx.save();ctx.globalAlpha=item.opacity/100;ctx.strokeStyle=item.color;ctx.fillStyle=item.fill;ctx.lineWidth=Math.max(2,width*.004*scale);ctx.lineCap="round";ctx.lineJoin="round";if(item.tool==="Player ring"||item.tool==="Spotlight"){ctx.beginPath();ctx.ellipse(a.x,a.y,width*.038*scale,height*(item.tool==="Spotlight"?.021:.016)*scale,0,0,Math.PI*2);if(item.tool==="Spotlight")ctx.fill();ctx.stroke()}else if(item.tool==="Text"){ctx.fillStyle=item.color;ctx.font=`700 ${Math.round(width*.028*scale)}px Arial`;ctx.fillText(item.text||"Tactical note",a.x,a.y)}else if(item.tool==="Area"&&item.points?.length){ctx.beginPath();item.points.forEach((point,index)=>index?ctx.lineTo(point.x*sx,point.y*sy):ctx.moveTo(point.x*sx,point.y*sy));ctx.closePath();ctx.fill();ctx.stroke()}else{ctx.beginPath();ctx.moveTo(a.x,a.y);if(item.tool==="Curved arrow"){const cx=(a.x+b.x)/2,cy=Math.min(a.y,b.y)-Math.abs(b.x-a.x)*.18;ctx.quadraticCurveTo(cx,cy,b.x,b.y)}else ctx.lineTo(b.x,b.y);if(item.tool==="Distance")ctx.setLineDash([12,8]);ctx.stroke();if(item.tool==="Arrow"||item.tool==="Curved arrow"){const angle=Math.atan2(b.y-a.y,b.x-a.x),head=14*scale;ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-Math.cos(angle-.55)*head,b.y-Math.sin(angle-.55)*head);ctx.lineTo(b.x-Math.cos(angle+.55)*head,b.y-Math.sin(angle+.55)*head);ctx.closePath();ctx.fillStyle=item.color;ctx.fill()}}ctx.restore()}
+  function drawAnnotation(ctx:CanvasRenderingContext2D,item:Illustration,width:number,height:number){
+    const sx=width/100,sy=height/100,a={x:item.start.x*sx,y:item.start.y*sy},b={x:(item.end||item.start).x*sx,y:(item.end||item.start).y*sy},scale=item.size/100,alpha=item.opacity/100;
+    const path=()=>{ctx.beginPath();ctx.moveTo(a.x,a.y);if(item.tool==="Curved arrow"){const cx=(a.x+b.x)/2,cy=Math.min(a.y,b.y)-Math.abs(b.x-a.x)*.18;ctx.quadraticCurveTo(cx,cy,b.x,b.y)}else ctx.lineTo(b.x,b.y)};
+    const outlinedStroke=(mainWidth:number,dash:number[]=[])=>(ctx.save(),ctx.lineCap="round",ctx.lineJoin="round",ctx.setLineDash(dash),path(),ctx.strokeStyle="rgba(6,10,14,.9)",ctx.lineWidth=mainWidth+7*scale,ctx.stroke(),path(),ctx.strokeStyle="rgba(255,255,255,.94)",ctx.lineWidth=mainWidth+3*scale,ctx.stroke(),path(),ctx.strokeStyle=item.color,ctx.lineWidth=mainWidth,ctx.stroke(),ctx.restore());
+    ctx.save();ctx.globalAlpha=alpha;ctx.lineCap="round";ctx.lineJoin="round";
+    if(item.tool==="Player ring"){
+      const rx=width*.038*scale,ry=height*.021*scale;
+      ctx.shadowColor="rgba(0,0,0,.9)";ctx.shadowBlur=16*scale;ctx.beginPath();ctx.ellipse(a.x,a.y,rx*1.18,ry*1.28,0,0,Math.PI*2);ctx.fillStyle="rgba(0,0,0,.42)";ctx.fill();ctx.shadowBlur=0;
+      ctx.beginPath();ctx.ellipse(a.x,a.y,rx,ry,0,0,Math.PI*2);ctx.fillStyle=item.color+"b8";ctx.fill();
+      [[rx*1.18,ry*1.28,"rgba(5,7,9,.95)",13],[rx*1.1,ry*1.18,"#fff",9],[rx,ry,item.color,8],[rx*.72,ry*.62,"#fff",3]].forEach(([x,y,color,line])=>{ctx.beginPath();ctx.ellipse(a.x,a.y,x as number,y as number,0,0,Math.PI*2);ctx.strokeStyle=color as string;ctx.lineWidth=(line as number)*scale;ctx.stroke()});
+    }else if(item.tool==="Spotlight"){
+      const rx=width*.034*scale,ry=height*.02*scale,beam=ctx.createLinearGradient(a.x,a.y-height*.25,a.x,a.y);beam.addColorStop(0,"rgba(255,255,255,0)");beam.addColorStop(.55,item.fill+"28");beam.addColorStop(1,item.fill+"e8");
+      ctx.beginPath();ctx.moveTo(a.x-rx*.18,a.y-height*.28);ctx.lineTo(a.x+rx*.18,a.y-height*.28);ctx.lineTo(a.x+rx,a.y);ctx.lineTo(a.x-rx,a.y);ctx.closePath();ctx.fillStyle=beam;ctx.fill();
+      const glow=ctx.createRadialGradient(a.x,a.y,0,a.x,a.y,rx);glow.addColorStop(0,"rgba(255,255,255,.98)");glow.addColorStop(.34,item.fill+"f2");glow.addColorStop(1,item.fill+"30");ctx.beginPath();ctx.ellipse(a.x,a.y,rx,ry,0,0,Math.PI*2);ctx.fillStyle=glow;ctx.fill();ctx.strokeStyle="rgba(8,10,12,.92)";ctx.lineWidth=9*scale;ctx.stroke();ctx.strokeStyle="#fff";ctx.lineWidth=6*scale;ctx.stroke();ctx.beginPath();ctx.ellipse(a.x,a.y,rx*.86,ry*.78,0,0,Math.PI*2);ctx.strokeStyle=item.color;ctx.lineWidth=5*scale;ctx.stroke();
+    }else if(item.tool==="Text"){
+      ctx.font=`800 ${Math.round(width*.026*scale)}px Arial`;ctx.lineWidth=7*scale;ctx.strokeStyle="rgba(0,0,0,.9)";ctx.strokeText(item.text||"Tactical note",a.x,a.y);ctx.fillStyle=item.color;ctx.fillText(item.text||"Tactical note",a.x,a.y);
+    }else if(item.tool==="Area"&&item.points?.length){
+      ctx.beginPath();item.points.forEach((point,index)=>index?ctx.lineTo(point.x*sx,point.y*sy):ctx.moveTo(point.x*sx,point.y*sy));ctx.closePath();ctx.save();ctx.clip();ctx.fillStyle=item.fill+"78";ctx.fillRect(0,0,width,height);ctx.strokeStyle=item.fill;ctx.lineWidth=14*scale;for(let x=-height;x<width+height;x+=28*scale){ctx.beginPath();ctx.moveTo(x,height);ctx.lineTo(x+height,0);ctx.stroke()}ctx.restore();ctx.beginPath();item.points.forEach((point,index)=>index?ctx.lineTo(point.x*sx,point.y*sy):ctx.moveTo(point.x*sx,point.y*sy));ctx.closePath();ctx.strokeStyle="rgba(0,0,0,.85)";ctx.lineWidth=12*scale;ctx.stroke();ctx.strokeStyle=item.color;ctx.lineWidth=7*scale;ctx.stroke();
+    }else{
+      const mainWidth=(item.tool==="Arrow"||item.tool==="Curved arrow"?10:6)*scale;outlinedStroke(mainWidth,item.tool==="Distance"?[16*scale,11*scale]:[]);
+      if(item.tool==="Arrow"||item.tool==="Curved arrow"){
+        const angle=Math.atan2(b.y-a.y,b.x-a.x),head=28*scale,wing=15*scale,points=[[b.x,b.y],[b.x-Math.cos(angle)*head-Math.sin(angle)*wing,b.y-Math.sin(angle)*head+Math.cos(angle)*wing],[b.x-Math.cos(angle)*head+Math.sin(angle)*wing,b.y-Math.sin(angle)*head-Math.cos(angle)*wing]];
+        const arrowHead=(fill:string,expand:number)=>{ctx.beginPath();ctx.moveTo(points[0][0],points[0][1]);ctx.lineTo(points[1][0]-Math.sin(angle)*expand,points[1][1]+Math.cos(angle)*expand);ctx.lineTo(points[2][0]+Math.sin(angle)*expand,points[2][1]-Math.cos(angle)*expand);ctx.closePath();ctx.fillStyle=fill;ctx.fill()};arrowHead("rgba(0,0,0,.88)",7*scale);arrowHead("#fff",3*scale);arrowHead(item.color,0);
+      }
+      if(item.tool==="Link line"||item.tool==="Distance"){[a,b].forEach(point=>{ctx.beginPath();ctx.arc(point.x,point.y,9*scale,0,Math.PI*2);ctx.fillStyle="#fff";ctx.fill();ctx.beginPath();ctx.arc(point.x,point.y,6*scale,0,Math.PI*2);ctx.fillStyle=item.color;ctx.fill()})}
+      if(item.tool==="Distance"){const label=`${Math.round(Math.hypot((b.x-a.x)/sx*1.05,(b.y-a.y)/sy*.68))} m`,x=(a.x+b.x)/2,y=(a.y+b.y)/2;ctx.font=`800 ${Math.round(22*scale)}px Arial`;const pad=11*scale,w=ctx.measureText(label).width+pad*2;ctx.fillStyle="rgba(8,12,16,.9)";ctx.fillRect(x-w/2,y-28*scale,w,36*scale);ctx.strokeStyle=item.color;ctx.lineWidth=3*scale;ctx.strokeRect(x-w/2,y-28*scale,w,36*scale);ctx.fillStyle="#fff";ctx.textAlign="center";ctx.fillText(label,x,y)}
+    }
+    ctx.restore();
+  }
   async function exportAnnotatedVideo(clip=sessionClips[0]){
     const video=videoRef.current;
     if(!video||!videoUrl){notify("Import a match video first");return}
@@ -341,8 +376,12 @@ export default function Home(){
       const stopped=new Promise<void>((resolve,reject)=>{recorder.onstop=()=>resolve();recorder.onerror=()=>reject(new Error("Recorder failed"))});
       video.pause();video.currentTime=start;
       await new Promise<void>((resolve,reject)=>{if(Math.abs(video.currentTime-start)<.05){resolve();return}const timer=window.setTimeout(()=>reject(new Error("Video seek timeout")),5000);video.addEventListener("seeked",()=>{window.clearTimeout(timer);resolve()},{once:true})});
-      video.playbackRate=1;recorder.start(100);await video.play();
-      await new Promise<void>(resolve=>{const startedAt=performance.now(),maxMs=(end-start)*1000+2500;const frame=()=>{ctx.drawImage(video,0,0,width,height);illustrations.forEach(item=>drawAnnotation(ctx,item,width,height));if(video.currentTime>=end||video.ended||performance.now()-startedAt>=maxMs){resolve();return}requestAnimationFrame(frame)};frame()});
+      const event=events.find(item=>item.id===clip.eventId),eventTime=event?eventSeconds(event):(illustrations[0]?.time??start),holdTime=Math.max(start,Math.min(end-.04,eventTime));
+      const render=(withDrawings:boolean)=>{ctx.drawImage(video,0,0,width,height);if(withDrawings)illustrations.forEach(item=>drawAnnotation(ctx,item,width,height))};
+      const playUntil=(target:number)=>new Promise<void>((resolve,reject)=>{const deadline=performance.now()+Math.max(5000,(target-video.currentTime+2)*1000),frame=()=>{render(false);if(video.currentTime>=target-.025||video.ended){resolve();return}if(performance.now()>deadline){reject(new Error("Video playback timeout"));return}requestAnimationFrame(frame)};void video.play().catch(reject);frame()});
+      recorder.start(100);
+      if(illustrations.length){await playUntil(holdTime);video.pause();video.currentTime=holdTime;await new Promise<void>(resolve=>{const holdStarted=performance.now(),frame=()=>{render(true);if(performance.now()-holdStarted>=2000){resolve();return}requestAnimationFrame(frame)};frame()})}
+      await playUntil(end);
       video.pause();if(recorder.state!=="inactive")recorder.stop();await stopped;
       if(!chunks.length)throw new Error("Empty recording");
       const url=URL.createObjectURL(new Blob(chunks,{type:"video/webm"})),link=document.createElement("a");link.href=url;link.download=`tag-x-${clip.title.toLowerCase().replace(/[^a-z0-9]+/g,"-")}.webm`;document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),5000);notify("Annotated video exported");
@@ -350,16 +389,14 @@ export default function Home(){
     finally{video.pause();video.currentTime=Math.min(previousTime,Math.max(0,video.duration||previousTime));video.playbackRate=previousRate;if(!wasPaused)void video.play();setExporting(false)}
   }
   function illustrationSvg(item:Illustration){
-    const a=item.start,b=item.end||item.start,selected=item.id===selectedIllustration,scale=item.size/100,common={stroke:item.color,opacity:item.opacity/100,onPointerDown:(e:React.PointerEvent<SVGElement>)=>beginMoveIllustration(e,item),style:{cursor:tool==="Select"?"move":"pointer",pointerEvents:"all" as const}};
-    if(item.tool==="Player ring")return <ellipse {...common} cx={a.x} cy={a.y} rx={3.8*scale} ry={1.6*scale} fill="none" strokeWidth={(selected?1.05:.65)*scale}/>;
-    if(item.tool==="Spotlight")return <ellipse {...common} cx={a.x} cy={a.y} rx={4*scale} ry={2.1*scale} fill={item.fill} strokeWidth={(selected?1:.55)*scale}/>;
-    if(item.tool==="Text")return <text {...common} x={a.x} y={a.y} fill={item.color} stroke="none" fontSize={3.2*scale} fontWeight="700">{item.text}</text>;
-    if(item.tool==="Area"&&item.points)return <polygon {...common} points={item.points.map(point=>`${point.x},${point.y}`).join(" ")} fill={item.fill} strokeWidth={(selected?1.05:.6)*scale}/>;
-    const arrowMarkerId=`illustrator-head-${item.id}`;
-    const arrowMarker=<defs><marker id={arrowMarkerId} markerWidth="4" markerHeight="4" refX="3.6" refY="2" orient="auto" markerUnits="userSpaceOnUse" viewBox="0 0 4 4"><path d="M0,0 L4,2 L0,4 Z" fill={item.color}/></marker></defs>;
-    if(item.tool==="Curved arrow"){const cx=(a.x+b.x)/2,cy=Math.min(a.y,b.y)-Math.abs(b.x-a.x)*.18;return <g {...common}>{arrowMarker}<path d={`M ${a.x} ${a.y} Q ${cx} ${cy} ${b.x} ${b.y}`} fill="none" strokeWidth={(selected?1.2:.8)*scale} markerEnd={`url(#${arrowMarkerId})`}/></g>}
-    const dash=item.tool==="Distance"?"2 1":undefined,angle=Math.atan2(b.y-a.y,b.x-a.x),headLength=3.4,headWidth=1.7,baseX=b.x-Math.cos(angle)*headLength,baseY=b.y-Math.sin(angle)*headLength,perpX=-Math.sin(angle)*headWidth,perpY=Math.cos(angle)*headWidth;
-    return <g {...common}><line x1={a.x} y1={a.y} x2={b.x} y2={b.y} strokeWidth={(selected?1.2:.8)*scale} strokeDasharray={dash}/>{item.tool==="Arrow"&&<polygon points={`${b.x},${b.y} ${baseX+perpX*scale},${baseY+perpY*scale} ${baseX-perpX*scale},${baseY-perpY*scale}`} fill={item.color} stroke="none"/>}{item.tool==="Distance"&&<text x={(a.x+b.x)/2} y={(a.y+b.y)/2-1} fill={item.color} stroke="none" fontSize={2.8*scale} textAnchor="middle">{Math.round(Math.hypot((b.x-a.x)*1.05,(b.y-a.y)*.68))} m</text>}</g>
+    const a=item.start,b=item.end||item.start,selected=item.id===selectedIllustration,scale=item.size/100,id=`annotation-${item.id}`,opacity=item.opacity/100,interaction={opacity,onPointerDown:(e:React.PointerEvent<SVGElement>)=>beginMoveIllustration(e,item),style:{cursor:tool==="Select"?"move":"pointer",pointerEvents:"all" as const}};
+    const defs=<defs><filter id={`${id}-shadow`} x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy=".45" stdDeviation=".65" floodColor="#000" floodOpacity=".85"/></filter><linearGradient id={`${id}-beam`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={item.fill} stopOpacity="0"/><stop offset=".72" stopColor={item.fill} stopOpacity=".3"/><stop offset="1" stopColor={item.fill} stopOpacity=".9"/></linearGradient><radialGradient id={`${id}-glow`}><stop offset="0" stopColor="#fff" stopOpacity=".95"/><stop offset=".4" stopColor={item.fill} stopOpacity=".82"/><stop offset="1" stopColor={item.fill} stopOpacity=".12"/></radialGradient><pattern id={`${id}-stripes`} width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(35)"><rect width="2" height="4" fill={item.fill}/><rect x="2" width="2" height="4" fill={item.fill} opacity=".18"/></pattern></defs>;
+    if(item.tool==="Player ring")return <g {...interaction} filter={`url(#${id}-shadow)`}>{defs}<ellipse cx={a.x} cy={a.y} rx={5.05*scale} ry={2.7*scale} fill="rgba(0,0,0,.42)" stroke="#080a0d" strokeWidth={1.05*scale}/><ellipse cx={a.x} cy={a.y} rx={4.7*scale} ry={2.42*scale} fill={item.color} fillOpacity=".72" stroke="#fff" strokeWidth={1.05*scale}/><ellipse cx={a.x} cy={a.y} rx={4.15*scale} ry={1.95*scale} fill="none" stroke={item.color} strokeWidth={(selected?1.24:1.02)*scale}/><ellipse cx={a.x} cy={a.y} rx={3.05*scale} ry={1.2*scale} fill="none" stroke="#fff" strokeWidth={.38*scale}/></g>;
+    if(item.tool==="Spotlight")return <g {...interaction} filter={`url(#${id}-shadow)`}>{defs}<path d={`M ${a.x-.7*scale} ${a.y-25*scale} L ${a.x+.7*scale} ${a.y-25*scale} L ${a.x+3.8*scale} ${a.y} L ${a.x-3.8*scale} ${a.y} Z`} fill={`url(#${id}-beam)`}/><ellipse cx={a.x} cy={a.y} rx={3.9*scale} ry={2.05*scale} fill={`url(#${id}-glow)`} stroke="#080a0d" strokeWidth={1.05*scale}/><ellipse cx={a.x} cy={a.y} rx={3.65*scale} ry={1.82*scale} fill="none" stroke="#fff" strokeWidth={.72*scale}/><ellipse cx={a.x} cy={a.y} rx={3.25*scale} ry={1.48*scale} fill="none" stroke={item.color} strokeWidth={(selected ? 1.05 : .86)*scale}/></g>;
+    if(item.tool==="Text")return <g {...interaction} filter={`url(#${id}-shadow)`}>{defs}<text x={a.x} y={a.y} fill={item.color} stroke="#05080c" strokeWidth={.5*scale} paintOrder="stroke" fontSize={3.2*scale} fontWeight="900">{item.text}</text></g>;
+    if(item.tool==="Area"&&item.points)return <g {...interaction} filter={`url(#${id}-shadow)`}>{defs}<polygon points={item.points.map(point=>`${point.x},${point.y}`).join(" ")} fill={`url(#${id}-stripes)`} fillOpacity=".78" stroke="#080b0e" strokeWidth={1.35*scale}/><polygon points={item.points.map(point=>`${point.x},${point.y}`).join(" ")} fill="none" stroke={item.color} strokeWidth={(selected?1.05:.72)*scale}/></g>;
+    const curved=item.tool==="Curved arrow",path=curved?`M ${a.x} ${a.y} Q ${(a.x+b.x)/2} ${Math.min(a.y,b.y)-Math.abs(b.x-a.x)*.18} ${b.x} ${b.y}`:`M ${a.x} ${a.y} L ${b.x} ${b.y}`,dash=item.tool==="Distance"?"2.1 1.25":undefined,angle=Math.atan2(b.y-a.y,b.x-a.x),headLength=4.2*scale,headWidth=2.25*scale,baseX=b.x-Math.cos(angle)*headLength,baseY=b.y-Math.sin(angle)*headLength,perpX=-Math.sin(angle)*headWidth,perpY=Math.cos(angle)*headWidth,head=`${b.x},${b.y} ${baseX+perpX},${baseY+perpY} ${baseX-perpX},${baseY-perpY}`;
+    return <g {...interaction} filter={`url(#${id}-shadow)`}>{defs}<path d={path} fill="none" stroke="#080b0e" strokeWidth={(selected?2.05:1.65)*scale} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash}/><path d={path} fill="none" stroke="#fff" strokeWidth={(selected?1.48:1.18)*scale} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash}/><path d={path} fill="none" stroke={item.color} strokeWidth={(selected?1.12:.82)*scale} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash}/>{(item.tool==="Arrow"||curved)&&<><polygon points={head} fill="#080b0e" stroke="#080b0e" strokeWidth={1.15*scale}/><polygon points={head} fill={item.color} stroke="#fff" strokeWidth={.34*scale}/></>}{(item.tool==="Link line"||item.tool==="Distance")&&<>{[a,b].map((point,index)=><g key={index}><circle cx={point.x} cy={point.y} r={1.15*scale} fill="#fff"/><circle cx={point.x} cy={point.y} r={.72*scale} fill={item.color}/></g>)}</>}{item.tool==="Distance"&&<g><rect x={(a.x+b.x)/2-4.2*scale} y={(a.y+b.y)/2-3.3*scale} width={8.4*scale} height={3.6*scale} rx={.7*scale} fill="#080b0e" stroke={item.color} strokeWidth={.32*scale}/><text x={(a.x+b.x)/2} y={(a.y+b.y)/2-.8*scale} fill="#fff" stroke="none" fontSize={2.05*scale} fontWeight="900" textAnchor="middle">{Math.round(Math.hypot((b.x-a.x)*1.05,(b.y-a.y)*.68))} m</text></g>}</g>
   }
 
   return <main className={`app-shell ${view==="illustrator"?"illustrator-mode":""}`}>
