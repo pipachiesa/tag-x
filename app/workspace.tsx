@@ -113,7 +113,7 @@ function PanelWindow({id,title,meta,rect,locked,onPointerDown,children}:{id:Pane
   </section>
 }
 
-export default function Workspace(){
+export default function Workspace({user}:{user:CloudUser}){
   const [view,setView] = useState<View>("tagging");
   const [playing,setPlaying] = useState(false);
   const [playbackRate,setPlaybackRate] = useState(1);
@@ -124,7 +124,7 @@ export default function Workspace(){
   const [cloudReady,setCloudReady] = useState(false);
   const [cloudConfigured,setCloudConfigured] = useState(false);
   const [cloudSaving,setCloudSaving] = useState(false);
-  const [cloudUser,setCloudUser] = useState<CloudUser>({displayName:"Analyst",email:""});
+  const [cloudUser,setCloudUser] = useState<CloudUser>(user);
   const [activeAction,setActiveAction] = useState("Pass");
   const [activeOutcome,setActiveOutcome] = useState("Successful");
   const [activePlayer,setActivePlayer] = useState("");
@@ -217,6 +217,7 @@ export default function Workspace(){
   useEffect(()=>{if(!sessionsReady)return;try{window.localStorage.setItem(MATCH_SESSIONS_STORAGE_KEY,JSON.stringify(sessions));window.localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY,activeSessionId)}catch{/* Sessions continue in memory if storage is full. */}},[sessions,activeSessionId,sessionsReady]);
   useEffect(()=>{try{const saved=window.localStorage.getItem(TEAMS_STORAGE_KEY);if(saved&&saved.length<2_000_000){const parsed=JSON.parse(saved) as SavedTeam[];if(Array.isArray(parsed)&&parsed.length<=100)setTeams(parsed)}}catch{window.localStorage.removeItem(TEAMS_STORAGE_KEY)}},[]);
   useEffect(()=>{try{window.localStorage.setItem(TEAMS_STORAGE_KEY,JSON.stringify(teams))}catch{/* The cloud copy remains available. */}},[teams]);
+  useEffect(()=>{let cancelled=false;(async()=>{try{const response=await fetch("/api/workspace",{cache:"no-store"});if(cancelled)return;if(response.status===503){setCloudConfigured(false);return}if(!response.ok)throw new Error(`Cloud load failed (${response.status})`);const result=await response.json() as {configured?:boolean;state?:CloudWorkspace|null;user?:CloudUser};setCloudConfigured(Boolean(result.configured));if(result.user)setCloudUser(result.user);if(result.state)applyCloudWorkspace(result.state)}catch(error){console.error(error);setCloudConfigured(false)}finally{if(!cancelled)setCloudReady(true)}})();return()=>{cancelled=true}},[applyCloudWorkspace]);
   useEffect(()=>{if(!sessionsReady||!cloudReady||!cloudConfigured)return;const timer=window.setTimeout(()=>void saveToCloud(true),900);return()=>window.clearTimeout(timer)},[sessionsReady,cloudReady,cloudConfigured,sessions,activeSessionId,teams,panels,enabledPanels,clips,playlists,illustrations,saveToCloud]);
   useEffect(()=>{const labels=activeRoster.map(playerLabel);if(!labels.includes(activePlayer))setActivePlayer(labels[0]||"")},[activeRoster,activePlayer]);
   useEffect(()=>{if(videoUrl||!playing)return;const timer=window.setInterval(()=>setSessions(current=>current.map(session=>session.id===activeSessionId?{...session,clock:session.clock+1}:session)),1000);return()=>window.clearInterval(timer)},[playing,videoUrl,activeSessionId]);
@@ -427,7 +428,7 @@ export default function Workspace(){
       <aside className="module-rail">
         <div className="match-card"><span>MATCH SESSIONS</span><select aria-label="Active match session" value={activeSessionId} onChange={e=>switchSession(e.target.value)}><option value="">No matches yet</option>{sessions.map(session=><option key={session.id} value={session.id}>{session.matchName}</option>)}</select><small>{competition}</small><strong>{events.length} <i>EVENTS</i></strong><button className="new-session" onClick={openImportModal}>＋ New match</button></div>
         <nav><button className={view==="tagging"?"active":""} onClick={()=>setView("tagging")}><span>⌾</span><b>Match Tagging</b><small>Collect events</small></button><button className={view==="illustrator"?"active":""} onClick={()=>setView("illustrator")}><span>✎</span><b>Illustrator</b><small>Build sequences</small></button></nav>
-        <div className="rail-bottom"><button onClick={()=>openTeamLibrary()}>♙ <span>Team library</span></button><button onClick={()=>setConfigOpen(true)}>⚙ <span>Controls</span></button><div className="analyst"><i>{cloudUser.displayName.split(/\s+/).slice(0,2).map(part=>part[0]).join("").toUpperCase()||"TX"}</i><span><b>{cloudUser.displayName}</b><small>{cloudConfigured?"Cloud workspace":"Local workspace"}</small></span><a className="signout" href="/signout-with-chatgpt?return_to=%2F">Sign out</a></div></div>
+        <div className="rail-bottom"><button onClick={()=>openTeamLibrary()}>♙ <span>Team library</span></button><button onClick={()=>setConfigOpen(true)}>⚙ <span>Controls</span></button><div className="analyst"><i>{cloudUser.displayName.split(/\s+/).slice(0,2).map(part=>part[0]).join("").toUpperCase()||"TX"}</i><span><b>{cloudUser.displayName}</b><small>{cloudUser.email}</small></span><a className="signout" href="/signout-with-chatgpt?return_to=%2F">Sign out</a></div></div>
       </aside>
 
       <section className="main-area">

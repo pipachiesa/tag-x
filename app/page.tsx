@@ -12,5 +12,5 @@ export default async function Home(){
   if(!gmail){
     return <main className="login-screen"><section className="login-card"><Mark/><span>TAG X</span><h1>Use a Gmail account</h1><p>Tag X currently accepts Google accounts ending in @gmail.com.</p><a className="google-login" href={chatGPTSignOutPath("/")}><i>G</i>Choose another account</a><small>{user.email}</small></section></main>;
   }
-  return <Workspace/>;
+  return <Workspace user={{displayName:user.displayName,email:user.email}}/>;
 }
