@@ -23,7 +23,7 @@ async function render(path = "/") {
   );
 }
 
-test("server-renders the authenticated Tag X entry point", async () => {
+test("server-renders the direct Google authentication entry point", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
@@ -31,20 +31,27 @@ test("server-renders the authenticated Tag X entry point", async () => {
   const html = await response.text();
   assert.match(html, /<title>Tag X — Football video intelligence<\/title>/i);
   assert.match(html, /Continue with Google/);
-  assert.match(html, /Gmail accounts only/);
+  assert.match(html, /Google Workspace accounts/);
   assert.match(html, /Football video intelligence/);
 });
 
-test("keeps Supabase credentials on the server and protects database tables", async () => {
-  const [page, route, schema] = await Promise.all([
+test("uses Supabase Google OAuth without ChatGPT authentication and protects database tables", async () => {
+  const [page, authGate, auth, route, schema] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/auth-gate.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/supabase-auth.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/workspace/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../supabase/schema.sql", import.meta.url), "utf8"),
   ]);
 
   assert.doesNotMatch(page, /SUPABASE_SERVICE_ROLE_KEY|process\.env\.SUPABASE/);
+  assert.match(authGate, /signInWithOAuth/);
+  assert.match(authGate, /provider:\s*"google"/);
+  assert.doesNotMatch(authGate, /gmail\|googlemail|sign-in-with-chatgpt/i);
+  assert.match(auth, /\/auth\/v1\/user/);
   assert.match(route, /SUPABASE_SERVICE_ROLE_KEY/);
-  assert.match(route, /getChatGPTUser/);
+  assert.match(route, /getSupabaseUser/);
+  assert.doesNotMatch(route, /ChatGPT|gmail\|googlemail/i);
   assert.match(route, /8_000_000/);
   assert.match(schema, /enable row level security/gi);
   assert.match(schema, /revoke all on public\.tagx_workspaces from anon, authenticated/i);

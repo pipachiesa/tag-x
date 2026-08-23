@@ -113,7 +113,7 @@ function PanelWindow({id,title,meta,rect,locked,onPointerDown,children}:{id:Pane
   </section>
 }
 
-export default function Workspace({user}:{user:CloudUser}){
+export default function Workspace({user,accessToken,onSignOut}:{user:CloudUser;accessToken:string;onSignOut:()=>Promise<void>}){
   const [view,setView] = useState<View>("tagging");
   const [playing,setPlaying] = useState(false);
   const [playbackRate,setPlaybackRate] = useState(1);
@@ -203,23 +203,23 @@ export default function Workspace({user}:{user:CloudUser}){
     if(!cloudConfigured){if(!silent)notify("Saved on this device · Supabase project pending");return false}
     setCloudSaving(true);
     try{
-      const response=await fetch("/api/workspace",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(workspaceSnapshot())});
+      const response=await fetch("/api/workspace",{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${accessToken}`},body:JSON.stringify(workspaceSnapshot())});
       if(!response.ok)throw new Error(`Save failed (${response.status})`);
       if(!silent)notify("Session saved to Supabase");
       return true;
     }catch(error){console.error(error);if(!silent)notify("Cloud save failed · local copy is safe");return false}
     finally{setCloudSaving(false)}
-  },[cloudConfigured,workspaceSnapshot]);
+  },[accessToken,cloudConfigured,workspaceSnapshot]);
 
   useEffect(()=>{try{const saved=window.localStorage.getItem(PANEL_LAYOUT_STORAGE_KEY);if(saved){const parsed=JSON.parse(saved) as Record<PanelKey,PanelRect>;if(parsed.video&&parsed.tagger&&parsed.pitch&&parsed.events)window.setTimeout(()=>setPanels(parsed),0)}}catch{window.localStorage.removeItem(PANEL_LAYOUT_STORAGE_KEY)}},[]);
   useEffect(()=>{try{window.localStorage.setItem(PANEL_LAYOUT_STORAGE_KEY,JSON.stringify(panels))}catch{/* Storage can be unavailable without breaking the workspace. */}},[panels]);
   useEffect(()=>{window.setTimeout(()=>{try{const saved=window.localStorage.getItem(MATCH_SESSIONS_STORAGE_KEY);const selected=window.localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);if(saved&&saved.length<2_000_000){const parsed=JSON.parse(saved) as MatchSession[];const valid=Array.isArray(parsed)&&parsed.length<=100&&parsed.every(session=>typeof session?.id==="string"&&typeof session.matchName==="string"&&typeof session.competition==="string"&&Number.isFinite(session.clock)&&Array.isArray(session.events)&&session.events.length<=5000);if(valid){const clean=parsed.filter(session=>session.id!=="river-boca"&&session.id!=="racing-independiente");setSessions(clean);setActiveSessionId(selected&&clean.some(session=>session.id===selected)?selected:clean[0]?.id||"")}else{window.localStorage.removeItem(MATCH_SESSIONS_STORAGE_KEY);window.localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY)}}}catch{window.localStorage.removeItem(MATCH_SESSIONS_STORAGE_KEY);window.localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY)}finally{setSessionsReady(true)}},0)},[]);
   useEffect(()=>{if(!sessionsReady)return;try{window.localStorage.setItem(MATCH_SESSIONS_STORAGE_KEY,JSON.stringify(sessions));window.localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY,activeSessionId)}catch{/* Sessions continue in memory if storage is full. */}},[sessions,activeSessionId,sessionsReady]);
-  useEffect(()=>{try{const saved=window.localStorage.getItem(TEAMS_STORAGE_KEY);if(saved&&saved.length<2_000_000){const parsed=JSON.parse(saved) as SavedTeam[];if(Array.isArray(parsed)&&parsed.length<=100)setTeams(parsed)}}catch{window.localStorage.removeItem(TEAMS_STORAGE_KEY)}},[]);
+  useEffect(()=>{window.setTimeout(()=>{try{const saved=window.localStorage.getItem(TEAMS_STORAGE_KEY);if(saved&&saved.length<2_000_000){const parsed=JSON.parse(saved) as SavedTeam[];if(Array.isArray(parsed)&&parsed.length<=100)setTeams(parsed)}}catch{window.localStorage.removeItem(TEAMS_STORAGE_KEY)}},0)},[]);
   useEffect(()=>{try{window.localStorage.setItem(TEAMS_STORAGE_KEY,JSON.stringify(teams))}catch{/* The cloud copy remains available. */}},[teams]);
-  useEffect(()=>{let cancelled=false;(async()=>{try{const response=await fetch("/api/workspace",{cache:"no-store"});if(cancelled)return;if(response.status===503){setCloudConfigured(false);return}if(!response.ok)throw new Error(`Cloud load failed (${response.status})`);const result=await response.json() as {configured?:boolean;state?:CloudWorkspace|null;user?:CloudUser};setCloudConfigured(Boolean(result.configured));if(result.user)setCloudUser(result.user);if(result.state)applyCloudWorkspace(result.state)}catch(error){console.error(error);setCloudConfigured(false)}finally{if(!cancelled)setCloudReady(true)}})();return()=>{cancelled=true}},[applyCloudWorkspace]);
+  useEffect(()=>{let cancelled=false;(async()=>{try{const response=await fetch("/api/workspace",{cache:"no-store",headers:{Authorization:`Bearer ${accessToken}`}});if(cancelled)return;if(response.status===503){setCloudConfigured(false);return}if(!response.ok)throw new Error(`Cloud load failed (${response.status})`);const result=await response.json() as {configured?:boolean;state?:CloudWorkspace|null;user?:CloudUser};setCloudConfigured(Boolean(result.configured));if(result.user)setCloudUser(result.user);if(result.state)applyCloudWorkspace(result.state)}catch(error){console.error(error);setCloudConfigured(false)}finally{if(!cancelled)setCloudReady(true)}})();return()=>{cancelled=true}},[accessToken,applyCloudWorkspace]);
   useEffect(()=>{if(!sessionsReady||!cloudReady||!cloudConfigured)return;const timer=window.setTimeout(()=>void saveToCloud(true),900);return()=>window.clearTimeout(timer)},[sessionsReady,cloudReady,cloudConfigured,sessions,activeSessionId,teams,panels,enabledPanels,clips,playlists,illustrations,saveToCloud]);
-  useEffect(()=>{const labels=activeRoster.map(playerLabel);if(!labels.includes(activePlayer))setActivePlayer(labels[0]||"")},[activeRoster,activePlayer]);
+  useEffect(()=>{const labels=activeRoster.map(playerLabel);if(!labels.includes(activePlayer))window.setTimeout(()=>setActivePlayer(labels[0]||""),0)},[activeRoster,activePlayer]);
   useEffect(()=>{if(videoUrl||!playing)return;const timer=window.setInterval(()=>setSessions(current=>current.map(session=>session.id===activeSessionId?{...session,clock:session.clock+1}:session)),1000);return()=>window.clearInterval(timer)},[playing,videoUrl,activeSessionId]);
   useEffect(()=>{const handler=(e:KeyboardEvent)=>{const target=e.target;if(target instanceof HTMLInputElement||target instanceof HTMLSelectElement||target instanceof HTMLTextAreaElement||(target instanceof HTMLElement&&target.isContentEditable))return;if(e.code==="Space"){e.preventDefault();togglePlay()}if(e.key==="ArrowLeft"){e.preventDefault();seek(-5)}if(e.key==="ArrowRight"){e.preventDefault();seek(5)}const i=Number(e.key)-1;if(i>=0&&i<actions.length)chooseAction(actions[i]);if((e.key==="Delete"||e.key==="Backspace")&&view==="illustrator")deleteSelectedIllustration();if(e.key==="Escape"){setConfigOpen(false);setRosterOpen(false);setImportOpen(false);setRouteDraft(null);setShotOrigin(null);setPolygonDraft([])}};window.addEventListener("keydown",handler);return()=>window.removeEventListener("keydown",handler)});
   useEffect(()=>()=>{if(videoUrl)URL.revokeObjectURL(videoUrl)},[videoUrl]);
@@ -428,7 +428,7 @@ export default function Workspace({user}:{user:CloudUser}){
       <aside className="module-rail">
         <div className="match-card"><span>MATCH SESSIONS</span><select aria-label="Active match session" value={activeSessionId} onChange={e=>switchSession(e.target.value)}><option value="">No matches yet</option>{sessions.map(session=><option key={session.id} value={session.id}>{session.matchName}</option>)}</select><small>{competition}</small><strong>{events.length} <i>EVENTS</i></strong><button className="new-session" onClick={openImportModal}>＋ New match</button></div>
         <nav><button className={view==="tagging"?"active":""} onClick={()=>setView("tagging")}><span>⌾</span><b>Match Tagging</b><small>Collect events</small></button><button className={view==="illustrator"?"active":""} onClick={()=>setView("illustrator")}><span>✎</span><b>Illustrator</b><small>Build sequences</small></button></nav>
-        <div className="rail-bottom"><button onClick={()=>openTeamLibrary()}>♙ <span>Team library</span></button><button onClick={()=>setConfigOpen(true)}>⚙ <span>Controls</span></button><div className="analyst"><i>{cloudUser.displayName.split(/\s+/).slice(0,2).map(part=>part[0]).join("").toUpperCase()||"TX"}</i><span><b>{cloudUser.displayName}</b><small>{cloudUser.email}</small></span><a className="signout" href="/signout-with-chatgpt?return_to=%2F">Sign out</a></div></div>
+        <div className="rail-bottom"><button onClick={()=>openTeamLibrary()}>♙ <span>Team library</span></button><button onClick={()=>setConfigOpen(true)}>⚙ <span>Controls</span></button><div className="analyst"><i>{cloudUser.displayName.split(/\s+/).slice(0,2).map(part=>part[0]).join("").toUpperCase()||"TX"}</i><span><b>{cloudUser.displayName}</b><small>{cloudUser.email}</small></span><button className="signout" onClick={()=>void onSignOut()}>Sign out</button></div></div>
       </aside>
 
       <section className="main-area">

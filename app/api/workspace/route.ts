@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getChatGPTUser, type ChatGPTUser } from "../../chatgpt-auth";
+import { getSupabaseUser, type SupabaseUser } from "../../supabase-auth";
 
 export const runtime = "edge";
 
@@ -15,13 +15,7 @@ function databaseHeaders(key: string, extra: HeadersInit = {}): HeadersInit {
   return { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json", ...extra };
 }
 
-async function authenticatedUser(): Promise<ChatGPTUser | null> {
-  const user = await getChatGPTUser();
-  if (user && /@(gmail|googlemail)\.com$/i.test(user.email)) return user;
-  return null;
-}
-
-async function ensureProfile(user: ChatGPTUser, url: string, key: string) {
+async function ensureProfile(user: SupabaseUser, url: string, key: string) {
   const response = await fetch(`${url}/rest/v1/tagx_profiles?on_conflict=external_user_id`, {
     method: "POST",
     headers: databaseHeaders(key, { Prefer: "resolution=merge-duplicates,return=representation" }),
@@ -33,10 +27,10 @@ async function ensureProfile(user: ChatGPTUser, url: string, key: string) {
   return profiles[0].id;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const config = databaseConfig();
   if (!config) return NextResponse.json({ configured: false }, { status: 503 });
-  const user = await authenticatedUser();
+  const user = await getSupabaseUser(request);
   if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   try {
     const ownerId = await ensureProfile(user, config.url, config.key);
@@ -53,7 +47,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const config = databaseConfig();
   if (!config) return NextResponse.json({ configured: false }, { status: 503 });
-  const user = await authenticatedUser();
+  const user = await getSupabaseUser(request);
   if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   try {
     const state = (await request.json()) as CloudState;
