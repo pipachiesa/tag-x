@@ -15,6 +15,8 @@ export default function AuthGate(){
   const [ready,setReady]=useState(false);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
+  const [authConfigured,setAuthConfigured]=useState(false);
+  const [guest,setGuest]=useState(false);
 
   useEffect(()=>{
     let active=true;
@@ -22,16 +24,17 @@ export default function AuthGate(){
     void (async()=>{
       try{
         const response=await fetch("/api/auth/config",{cache:"no-store"});
-        if(!response.ok)throw new Error("Google sign-in is not configured yet.");
+        if(!response.ok){if(active)setAuthConfigured(false);return}
         const config=await response.json() as PublicAuthConfig;
         const client=createClient(config.url,config.anonKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
         clientRef.current=client;
+        if(active)setAuthConfigured(true);
         const {data,error:sessionError}=await client.auth.getSession();
         if(sessionError)throw sessionError;
         if(active)setSession(data.session);
         const listener=client.auth.onAuthStateChange((_event,nextSession)=>{if(active)setSession(nextSession)});
         unsubscribe=()=>listener.data.subscription.unsubscribe();
-      }catch(cause){if(active)setError(cause instanceof Error?cause.message:"Google sign-in could not be loaded.")}
+      }catch(cause){if(active){setAuthConfigured(false);setError(cause instanceof Error?cause.message:"Sign-in could not be loaded.")}}
       finally{if(active)setReady(true)}
     })();
     return()=>{active=false;unsubscribe?.()};
@@ -50,5 +53,6 @@ export default function AuthGate(){
   }
 
   if(session?.access_token&&session.user.email)return <Workspace accessToken={session.access_token} onSignOut={signOut} user={{displayName:displayName(session),email:session.user.email}}/>;
-  return <main className="login-screen"><section className="login-card"><Mark/><span>TAG X</span><h1>Football video intelligence</h1><p>Sign in directly with Google to manage your matches, teams and analysis.</p><button className="google-login" disabled={!ready||busy||Boolean(error)} onClick={()=>void signIn()}><i>G</i>{busy?"Opening Google…":"Continue with Google"}</button><small>Personal Gmail and Google Workspace accounts</small>{error&&<p className="login-error" role="alert">{error}</p>}</section></main>;
+  if(guest)return <Workspace accessToken="" onSignOut={async()=>{setGuest(false)}} user={{displayName:"Guest",email:"guest@local"}}/>;
+  return <main className="login-screen"><section className="login-card"><Mark/><span>TAG X</span><h1>Football video intelligence</h1><p>Sign in directly with Google to manage your matches, teams and analysis.</p>{authConfigured&&<button className="google-login" disabled={!ready||busy} onClick={()=>void signIn()}><i>G</i>{busy?"Opening Google…":"Continue with Google"}</button>}<button className="google-login" disabled={!ready} onClick={()=>setGuest(true)}><i>▶</i>Explore the demo</button><small>{authConfigured?"Personal Gmail and Google Workspace accounts":"Guest mode runs locally in your browser — no sign-in required."}</small>{error&&authConfigured&&<p className="login-error" role="alert">{error}</p>}</section></main>;
 }
